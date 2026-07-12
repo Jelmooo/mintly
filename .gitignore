@@ -1,0 +1,20 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+*.tsbuildinfo
+
+# native/app build artifacts (if Capacitor is ever re-added)
+android/
+ios/
+*.apk
+
+# logs & caches
+*.log
+.vite/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.local

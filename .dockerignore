@@ -1,0 +1,7 @@
+node_modules
+dist
+.git
+_design_handoff
+android
+*.apk
+npm-debug.log
