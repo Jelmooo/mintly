@@ -1,0 +1,14 @@
+services:
+  mintly:
+    container_name: mintly
+    build: .
+    # Of gebruik een vooraf gebouwde image i.p.v. build:
+    # image: mintly:latest
+    restart: unless-stopped
+    ports:
+      # Cloudflare (Tunnel) stuurt de publieke URL naar deze poort.
+      # 8095 is al in gebruik door tgm-draaiboek, daarom 8096.
+      - "8096:80"
+    # Geen data-volume nodig: Mintly is een statische site (nginx) en bewaart
+    # alle gegevens in de browser (localStorage) van de bezoeker zelf.
+    # Er staat dus niets onder /DATA/APPS DATABASE voor deze app.

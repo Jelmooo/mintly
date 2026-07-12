@@ -60,14 +60,19 @@ npm run build      # outputs dist/
 
 Then host `dist/` any of these ways:
 
-- **Docker / your own server (nginx):** a `Dockerfile` + `nginx.conf` are
-  included.
+- **CasaOS / your own server (Docker + nginx):** `Dockerfile`, `nginx.conf`
+  and `docker-compose.yml` are included. On the server:
   ```
-  docker build -t mintly .
-  docker run -d -p 8080:80 --restart unless-stopped mintly
+  cd "/Live Websites"
+  git clone https://github.com/Jelmooo/mintly.git
+  cd mintly
+  sudo docker compose up -d --build
   ```
-  Then put it behind your reverse proxy / TLS (Caddy, Traefik, or an nginx
-  vhost) on your domain.
+  The container is named `mintly` and listens on host port **8096** (8095 is
+  taken by tgm-draaiboek). Point your Cloudflare Tunnel at port 8096 for the
+  public URL. Updating = `git pull` + `sudo docker compose up -d --build`.
+  No data volume is needed: data lives in the visitor's browser
+  (localStorage), not on the server.
 - **Plain nginx (no Docker):** copy `dist/` to e.g. `/var/www/mintly` and point
   a server block at it (use the included `nginx.conf` as a template).
 - **Managed static host:** drag-and-drop `dist/` to Netlify, or connect the repo
