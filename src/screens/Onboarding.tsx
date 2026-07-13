@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import type { AppState, Debt, Expense, Goal, IncomeExtra, PersonalBudget } from '../types';
-import { CADENCE, CATEGORIES, computeBudget, fmtEur, fmtMonth, INCOME_KINDS, NOW, PCATS, salaryMonthly, uid } from '../engine';
+import { CADENCE, CATEGORIES, computeBudget, fmtEur, fmtMonth, INCOME_KINDS, NOW, ordinal, PCATS, salaryMonthly, uid } from '../engine';
 import { Btn, CatDot, DateInput, Icon, MoneyInput, Segmented, Select, TextInput } from '../ui';
 import logoUrl from '../assets/Logo.svg';
 
@@ -146,7 +146,7 @@ export function Onboarding({ onFinish, onSkip }: {
             {meta.key === 'expenses' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {draft.expenses.map((e) => (
-                  <Row key={e.id} catKey={e.category} title={e.name} meta={`${(CATEGORIES[e.category] || CATEGORIES.other).label} · due ${e.payday}`} amount={fmtEur(Number(e.amount) || 0)} onRemove={() => removeFrom('expenses', e.id)} />
+                  <Row key={e.id} catKey={e.category} title={e.name} meta={`${(CATEGORIES[e.category] || CATEGORIES.other).label} · due the ${ordinal(e.payday)}`} amount={fmtEur(Number(e.amount) || 0)} onRemove={() => removeFrom('expenses', e.id)} />
                 ))}
                 <QuickAdd canAdd={!!exp.name && !!exp.amount} onAdd={() => { if (!exp.name || !exp.amount) return; pushTo('expenses', { ...exp, id: uid('e') } as Expense); setExp({ name: '', category: 'housing', amount: '', payday: 1 }); }}>
                   <TextInput value={exp.name} onChange={(v) => setExp({ ...exp, name: v })} placeholder="e.g. Apartment rent" />
@@ -154,7 +154,7 @@ export function Onboarding({ onFinish, onSkip }: {
                     <Select value={exp.category} onChange={(v) => setExp({ ...exp, category: v })} options={Object.entries(CATEGORIES).map(([value, c]) => ({ value, label: c.label }))} />
                     <MoneyInput value={exp.amount} onChange={(v) => setExp({ ...exp, amount: v })} />
                   </div>
-                  <Select value={String(exp.payday)} onChange={(v) => setExp({ ...exp, payday: Number(v) })} options={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: 'Payday ' + (i + 1) }))} />
+                  <Select value={String(exp.payday)} onChange={(v) => setExp({ ...exp, payday: Number(v) })} options={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: 'Due the ' + ordinal(i + 1) }))} />
                 </QuickAdd>
               </div>
             )}
@@ -162,7 +162,7 @@ export function Onboarding({ onFinish, onSkip }: {
             {meta.key === 'debts' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {draft.debts.map((d2) => (
-                  <Row key={d2.id} icon="card" color="var(--violet)" title={d2.name} meta={`${fmtEur(Number(d2.monthly) || 0)}/mo · ${d2.payday ? 'due ' + d2.payday : ''}`} amount={fmtEur(Number(d2.balance) || 0)} onRemove={() => removeFrom('debts', d2.id)} />
+                  <Row key={d2.id} icon="card" color="var(--violet)" title={d2.name} meta={`${fmtEur(Number(d2.monthly) || 0)}/mo${d2.payday ? ' · due the ' + ordinal(d2.payday) : ''}`} amount={fmtEur(Number(d2.balance) || 0)} onRemove={() => removeFrom('debts', d2.id)} />
                 ))}
                 <QuickAdd canAdd={!!debt.name && debt.balance !== ''} onAdd={() => { if (!debt.name || debt.balance === '') return; pushTo('debts', { ...debt, id: uid('d'), start: Number(debt.balance) || 0, apr: '' } as Debt); setDebt({ name: '', balance: '', monthly: '', payday: 1 }); }}>
                   <TextInput value={debt.name} onChange={(v) => setDebt({ ...debt, name: v })} placeholder="e.g. Credit card" />
@@ -171,7 +171,7 @@ export function Onboarding({ onFinish, onSkip }: {
                     <div><div className="eyebrow" style={{ marginBottom: 6 }}>Monthly payment</div><MoneyInput value={debt.monthly} onChange={(v) => setDebt({ ...debt, monthly: v })} /></div>
                   </div>
                   <Select value={String(debt.payday)} onChange={(v) => setDebt({ ...debt, payday: Number(v) })}
-                    options={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: 'Paydate ' + (i + 1) }))} />
+                    options={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: 'Due the ' + ordinal(i + 1) }))} />
                 </QuickAdd>
               </div>
             )}
