@@ -1,17 +1,21 @@
 import type { AppState } from '../types';
-import { type Budget, CADENCE, fmtEur } from '../engine';
-import { Card, Icon, Pill, Ring } from '../ui';
+import { type Budget, CADENCE, fmtEur, ordinal } from '../engine';
+import { Card, Icon, Pill, Ring, StatRow } from '../ui';
 
 const TEAL = 'oklch(0.78 0.13 200)';
 
+/** The four spec categories, monthly. */
+function splitCats(b: Budget) {
+  return [
+    { key: 'exp', label: 'Money for expenses', icon: 'cart', v: b.expensesTotal, color: 'var(--blue)' },
+    { key: 'debt', label: 'Money for debts', icon: 'card', v: b.debtTotal, color: 'var(--violet)' },
+    { key: 'sav', label: 'Money for saving goals', icon: 'target', v: b.savingsTotal, color: TEAL },
+    { key: 'priv', label: 'Private money', icon: 'user', v: Math.max(0, b.paidToPersonal - b.sweep), color: 'var(--accent)' },
+  ];
+}
+
 function WaterfallBar({ b }: { b: Budget }) {
-  const segs = [
-    { key: 'exp', label: 'Fixed expenses', v: b.expensesTotal, color: 'var(--blue)' },
-    { key: 'debt', label: 'Debt', v: b.debtTotal, color: 'var(--violet)' },
-    { key: 'sav', label: 'Dated goals', v: b.datedFunded, color: TEAL },
-    { key: 'bud', label: 'Personal budget', v: b.personalBudgetsTotal, color: 'var(--accent)' },
-    { key: 'swp', label: b.topOpen ? '→ ' + b.topOpen.name : 'Free', v: b.topOpen ? b.sweep : Math.max(0, b.personalFree), color: 'oklch(0.72 0.13 200)' },
-  ].filter((s) => s.v > 0);
+  const segs = splitCats(b).filter((s) => s.v > 0);
   const total = segs.reduce((s, x) => s + x.v, 0) || 1;
   return (
     <div>
@@ -39,111 +43,169 @@ function WaterfallBar({ b }: { b: Budget }) {
   );
 }
 
-function AccountFlow({ b, state }: { b: Budget; state: AppState }) {
-  const Acc = ({ name, role, amount, color, items }: {
-    name: string; role: string; amount: number; color: string;
-    items: { label: string; v: number; pos?: boolean }[];
-  }) => (
-    <div style={{ flex: 1, minWidth: 200, background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r)', padding: 18 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: `color-mix(in oklch, ${color} 18%, transparent)`, color, display: 'grid', placeItems: 'center' }}>
-          <Icon name="wallet" size={19} />
-        </div>
+/** Path A: how each payday should be split, in per-payday amounts. */
+function PaydaySplit({ b, state }: { b: Budget; state: AppState }) {
+  const per = CADENCE[state.salary.cadence].perMonth || 1;
+  const monthly = state.salary.cadence === 'monthly';
+  return (
+    <Card>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <h3 style={{ fontSize: 16 }}>Every payday, split it like this</h3>
+        <Pill color="var(--text-2)">{CADENCE[state.salary.cadence].label}</Pill>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {splitCats(b).map((s) => (
+          <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: `color-mix(in oklch, ${s.color} 16%, transparent)`, color: s.color, display: 'grid', placeItems: 'center', flex: '0 0 auto' }}>
+              <Icon name={s.icon} size={17} />
+            </div>
+            <span style={{ flex: 1, fontSize: 14 }}>{s.label}</span>
+            <div style={{ textAlign: 'right' }}>
+              <div className="num mono" style={{ fontSize: 15, color: s.color }}>{fmtEur(s.v / per)}</div>
+              {!monthly && <div className="num mono" style={{ fontSize: 10.5, color: 'var(--text-3)' }}>{fmtEur(s.v)}/mo</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function SavingsPlanCard({ b, onNav }: { b: Budget; onNav: (id: string) => void }) {
+  return (
+    <Card>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h3 style={{ fontSize: 16 }}>Savings plan</h3>
+        <button onClick={() => onNav('goals')} style={{ background: 'none', border: 'none', color: 'var(--text-2)', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4 }}>Manage <Icon name="arrow" size={13} /></button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {b.goals.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>No goals yet.</div>}
+        {b.goals.map((g) => {
+          const pct = Math.min(100, (Number(g.saved) / Number(g.target)) * 100 || 0);
+          const open = !g.hasDeadline;
+          const isTopOpen = open && b.topOpen && b.topOpen.id === g.id;
+          const col = open ? TEAL : (g.onTrack ? 'var(--accent)' : 'var(--amber)');
+          return (
+            <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <Ring pct={pct} size={52} thickness={6} color={col}>
+                <span className="num mono" style={{ fontSize: 11, fontWeight: 600 }}>{Math.round(pct)}</span>
+              </Ring>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.name}</span>
+                  <span className="num mono" style={{ fontSize: 13, color: col, flex: '0 0 auto' }}>{fmtEur(g.funded)}/mo</span>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>
+                  {fmtEur(Number(g.saved))} of {fmtEur(Number(g.target))} · {open ? (isTopOpen ? 'catches the rest' : 'no deadline') : (g.onTrack ? 'on track' : 'needs ' + fmtEur(g.required) + '/mo')}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+function LastEventCard({ state }: { state: AppState }) {
+  const e = state.events[state.events.length - 1];
+  if (!e) return null;
+  return (
+    <Card>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={{ fontSize: 14.5, fontWeight: 600 }}>{name}</div>
-          <div className="eyebrow" style={{ fontSize: 10 }}>{role}</div>
-        </div>
-      </div>
-      <div className="num" style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.03em', color }}>{fmtEur(amount)}</div>
-      <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.map((it, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-            <span style={{ color: 'var(--text-2)' }}>{it.label}</span>
-            <span className="num mono" style={{ color: it.pos ? 'var(--accent)' : 'var(--text)' }}>{it.pos ? '+' : '−'}{fmtEur(it.v)}</span>
+          <div className="eyebrow">Last allocated</div>
+          <div style={{ fontSize: 14, marginTop: 4 }}>
+            💶 {e.label}
+            <span style={{ color: 'var(--text-3)' }}> · {new Date(e.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
           </div>
-        ))}
+        </div>
+        <div className="num mono" style={{ fontSize: 18, color: 'var(--accent)' }}>{fmtEur(e.amount)}</div>
       </div>
-    </div>
-  );
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-      <Acc name={state.meta.mainName} role="Income · expenses · dated savings" color="var(--blue)" amount={b.incomeTotal}
-        items={[
-          { label: 'Income in', v: b.incomeTotal, pos: true },
-          { label: 'Fixed expenses', v: b.expensesTotal },
-          { label: 'Debt', v: b.debtTotal },
-          { label: 'Dated goals', v: b.datedFunded },
-        ]} />
-      <div style={{ display: 'grid', placeItems: 'center', color: 'var(--text-3)', flex: '0 0 auto', margin: '0 auto' }}>
-        <div className="eyebrow" style={{ marginBottom: 4 }}>pay yourself</div>
-        <Icon name="arrow" size={26} style={{ transform: 'rotate(90deg)' }} />
-        <div className="num mono" style={{ fontSize: 12, color: 'var(--accent)', marginTop: 4 }}>{fmtEur(b.paidToPersonal)}/mo</div>
-      </div>
-      <Acc name={state.meta.personalName} role="Budgets · auto-save" color="var(--accent)" amount={b.paidToPersonal}
-        items={[
-          { label: 'Paid in', v: b.paidToPersonal, pos: true },
-          { label: 'Spending budgets', v: b.personalBudgetsTotal },
-          b.topOpen
-            ? { label: 'Into ' + b.topOpen.name, v: b.sweep }
-            : { label: 'Free to spend', v: Math.max(0, b.personalFree), pos: true },
-        ]} />
-    </div>
+    </Card>
   );
 }
 
-function SpendBreakdown({ b }: { b: Budget }) {
-  const cats = b.cats;
-  const catRows = Object.entries(b.expByCat).map(([k, v]) => ({ k, v, ...(cats[k] || cats.other) })).sort((a, c) => c.v - a.v);
-  const rows = [
-    ...catRows.map((c) => ({ label: c.label, v: c.v, color: c.color })),
-    { label: 'Debt', v: b.debtTotal, color: 'var(--violet)' },
-    { label: 'Savings', v: b.savingsTotal, color: TEAL },
-    { label: 'Personal budget', v: b.personalBudgetsTotal, color: 'var(--accent)' },
-  ].filter((r) => r.v > 0);
-  const total = rows.reduce((s, r) => s + r.v, 0) || 1;
-  let acc = 0;
-  const stops = rows.map((r) => { const a = acc; acc += r.v / total * 360; return `${r.color} ${a}deg ${acc}deg`; });
-  const conic = `conic-gradient(${stops.join(',')})`;
-  return (
-    <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', alignItems: 'center' }}>
-      <div style={{ position: 'relative', width: 150, height: 150, flex: '0 0 auto', margin: '0 auto' }}>
-        <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: conic, mask: 'radial-gradient(farthest-side, transparent 56%, #000 56%)', WebkitMask: 'radial-gradient(farthest-side, transparent 56%, #000 56%)' }} />
-        <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
-          <div>
-            <div className="eyebrow" style={{ fontSize: 9 }}>per month</div>
-            <div className="num" style={{ fontSize: 19, fontWeight: 600 }}>{fmtEur(total)}</div>
-          </div>
-        </div>
-      </div>
-      <div style={{ flex: 1, minWidth: 220, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 22px' }}>
-        {rows.map((r, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <span style={{ width: 9, height: 9, borderRadius: 3, background: r.color, flex: '0 0 auto' }} />
-            <span style={{ fontSize: 13, color: 'var(--text-2)', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.label}</span>
-            <span className="num mono" style={{ fontSize: 13 }}>{fmtEur(r.v)}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+/** Path B: manual / variable income — waiting for funding. */
+function ManualOverview({ state, b, onNav, onMoneyIn }: OverviewProps) {
+  const essentials = b.expensesTotal + b.debtTotal;
+  const bal = state.mainBalance;
+  const covered = bal >= essentials - 0.005;
+  const essRows = [
+    ...state.expenses.map((e) => ({ name: e.name, day: e.payday, v: Number(e.amount) || 0, icon: 'cart', color: 'var(--blue)' })),
+    ...state.debts.filter((d) => Number(d.balance) > 0).map((d) => ({ name: d.name, day: d.payday ?? 1, v: Number(d.monthly) || 0, icon: 'card', color: 'var(--violet)' })),
+  ].filter((r) => r.v > 0).sort((a, c) => (a.day ?? 1) - (c.day ?? 1));
 
-export function Overview({ state, b, onNav, onMoneyIn }: {
-  state: AppState; b: Budget; onNav: (id: string) => void; onMoneyIn: (k: 'salary' | 'extra') => void;
-}) {
-  const dim = b.paidToPersonal < 0 || b.personalOver;
-  const lastEvent = state.events[state.events.length - 1];
   return (
     <div className="fadeup" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      {/* money-in actions */}
-      <div style={{ display: 'flex', gap: 10 }}>
-        <button onClick={() => onMoneyIn('salary')} style={moneyBtn('var(--accent)', '#06160c')}>
-          <Icon name="wallet" size={18} /> Salary in
+      <Card style={{ position: 'relative', overflow: 'hidden', padding: '30px var(--pad)', textAlign: 'center' }}>
+        <div style={{ position: 'absolute', right: -60, top: -60, width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, var(--accent), transparent 70%)', opacity: 0.1, pointerEvents: 'none' }} />
+        <div className="eyebrow">Manual income · waiting for funding</div>
+        <div style={{ fontSize: 'clamp(26px, 5vw, 34px)', fontWeight: 600, letterSpacing: '-0.03em', marginTop: 10 }}>
+          Money arrived?
+        </div>
+        <p style={{ fontSize: 14, color: 'var(--text-2)', margin: '10px auto 18px', maxWidth: 420, lineHeight: 1.5 }}>
+          Add it and Mintly splits it for you — bills and debts first, then savings, and the rest is yours.
+        </p>
+        <button onClick={onMoneyIn} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 9, padding: '15px 30px', borderRadius: 14,
+          background: 'var(--accent)', color: '#06160c', border: 'none', fontWeight: 700, fontSize: 16,
+        }}>
+          <Icon name="plus" size={19} /> Add income
         </button>
-        <button onClick={() => onMoneyIn('extra')} style={moneyBtn('var(--surface-2)', 'var(--text)', true)}>
-          <Icon name="coins" size={18} /> Extra / gift
-        </button>
+      </Card>
+
+      <StatRow items={[
+        { label: 'Main account now', value: fmtEur(bal), color: covered ? 'var(--accent)' : 'var(--amber)' },
+        { label: 'Upcoming bills + debts', value: fmtEur(essentials), sub: `${fmtEur(b.expensesTotal)} bills · ${fmtEur(b.debtTotal)} debt` },
+        covered
+          ? { label: 'Coverage', value: '✓ covered', color: 'var(--accent)', sub: fmtEur(bal - essentials) + ' above bills' }
+          : { label: 'Coverage', value: fmtEur(essentials - bal), color: 'var(--amber)', sub: 'still needed for bills' },
+      ]} />
+
+      <div className="grid2 ov">
+        <Card>
+          <h3 style={{ fontSize: 16, marginBottom: 12 }}>Upcoming essentials</h3>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {essRows.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>No expenses or debts yet.</div>}
+            {essRows.map((r, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 2px', borderBottom: '1px solid var(--line-2)', fontSize: 13.5 }}>
+                <Icon name={r.icon} size={15} stroke={r.color} />
+                <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
+                <span style={{ color: 'var(--text-3)', fontSize: 11.5 }}>{r.day ? ordinal(r.day) : ''}</span>
+                <span className="num mono">{fmtEur(r.v)}</span>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, fontSize: 14 }}>
+              <b>Total per month</b><b className="num mono">{fmtEur(essentials)}</b>
+            </div>
+          </div>
+        </Card>
+        <SavingsPlanCard b={b} onNav={onNav} />
       </div>
+
+      <LastEventCard state={state} />
+    </div>
+  );
+}
+
+interface OverviewProps {
+  state: AppState; b: Budget; onNav: (id: string) => void; onMoneyIn: () => void;
+}
+
+export function Overview(props: OverviewProps) {
+  const { state, b, onNav, onMoneyIn } = props;
+  if (state.salary.cadence === 'manual') return <ManualOverview {...props} />;
+
+  const dim = b.paidToPersonal < 0 || b.personalOver;
+  return (
+    <div className="fadeup" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <button onClick={onMoneyIn} style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 9, padding: '14px',
+        borderRadius: 'var(--r)', background: 'var(--accent)', color: '#06160c', border: 'none', fontWeight: 700, fontSize: 15,
+      }}>
+        <Icon name="plus" size={18} /> Add income
+      </button>
 
       {/* HERO */}
       <Card style={{ position: 'relative', overflow: 'hidden', padding: '28px var(--pad)' }}>
@@ -186,73 +248,54 @@ export function Overview({ state, b, onNav, onMoneyIn }: {
         </div>
       )}
 
-      <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <h3 style={{ fontSize: 16 }}>Your two accounts</h3>
-          <Pill color="var(--blue)"><Icon name="arrow" size={12} /> auto-allocated</Pill>
-        </div>
-        <AccountFlow b={b} state={state} />
-      </Card>
-
-      <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ fontSize: 16 }}>Savings plan</h3>
-          <button onClick={() => onNav('goals')} style={{ background: 'none', border: 'none', color: 'var(--text-2)', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4 }}>Manage <Icon name="arrow" size={13} /></button>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {b.goals.map((g) => {
-            const pct = Math.min(100, (Number(g.saved) / Number(g.target)) * 100 || 0);
-            const open = !g.hasDeadline;
-            const isTopOpen = open && b.topOpen && b.topOpen.id === g.id;
-            const col = open ? TEAL : (g.onTrack ? 'var(--accent)' : 'var(--amber)');
-            return (
-              <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <Ring pct={pct} size={52} thickness={6} color={col}>
-                  <span className="num mono" style={{ fontSize: 11, fontWeight: 600 }}>{Math.round(pct)}</span>
-                </Ring>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <span style={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.name}</span>
-                    <span className="num mono" style={{ fontSize: 13, color: col, flex: '0 0 auto' }}>{fmtEur(g.funded)}/mo</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>
-                    {fmtEur(Number(g.saved))} of {fmtEur(Number(g.target))} · {open ? (isTopOpen ? 'catches the rest' : 'no deadline') : (g.onTrack ? 'on track' : 'needs ' + fmtEur(g.required) + '/mo')}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
+      <div className="grid2 ov">
+        <PaydaySplit b={b} state={state} />
+        <SavingsPlanCard b={b} onNav={onNav} />
+      </div>
 
       <Card>
         <h3 style={{ fontSize: 16, marginBottom: 18 }}>Where your money goes</h3>
         <SpendBreakdown b={b} />
       </Card>
 
-      {lastEvent && (
-        <Card>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div className="eyebrow">Last allocated</div>
-              <div style={{ fontSize: 14, marginTop: 4 }}>
-                {lastEvent.kind === 'salary' ? '💰' : '🎁'} {lastEvent.label}
-                <span style={{ color: 'var(--text-3)' }}> · {new Date(lastEvent.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
-              </div>
-            </div>
-            <div className="num mono" style={{ fontSize: 18, color: 'var(--accent)' }}>{fmtEur(lastEvent.amount)}</div>
-          </div>
-        </Card>
-      )}
+      <LastEventCard state={state} />
     </div>
   );
 }
 
-function moneyBtn(bg: string, color: string, border = false): React.CSSProperties {
-  return {
-    flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-    padding: '14px', borderRadius: 'var(--r)', background: bg, color,
-    border: border ? '1px solid var(--line)' : '1px solid transparent',
-    fontWeight: 700, fontSize: 15, letterSpacing: '-0.01em',
-  };
+function SpendBreakdown({ b }: { b: Budget }) {
+  const cats = b.cats;
+  const catRows = Object.entries(b.expByCat).map(([k, v]) => ({ k, v, ...(cats[k] || cats.other) })).sort((a, c) => c.v - a.v);
+  const rows = [
+    ...catRows.map((c) => ({ label: c.label, v: c.v, color: c.color })),
+    { label: 'Debt', v: b.debtTotal, color: 'var(--violet)' },
+    { label: 'Savings', v: b.savingsTotal, color: TEAL },
+    { label: 'Personal budget', v: b.personalBudgetsTotal, color: 'var(--accent)' },
+  ].filter((r) => r.v > 0);
+  const total = rows.reduce((s, r) => s + r.v, 0) || 1;
+  let acc = 0;
+  const stops = rows.map((r) => { const a = acc; acc += r.v / total * 360; return `${r.color} ${a}deg ${acc}deg`; });
+  const conic = `conic-gradient(${stops.join(',')})`;
+  return (
+    <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ position: 'relative', width: 150, height: 150, flex: '0 0 auto', margin: '0 auto' }}>
+        <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: conic, mask: 'radial-gradient(farthest-side, transparent 56%, #000 56%)', WebkitMask: 'radial-gradient(farthest-side, transparent 56%, #000 56%)' }} />
+        <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+          <div>
+            <div className="eyebrow" style={{ fontSize: 9 }}>per month</div>
+            <div className="num" style={{ fontSize: 19, fontWeight: 600 }}>{fmtEur(total)}</div>
+          </div>
+        </div>
+      </div>
+      <div style={{ flex: 1, minWidth: 220, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 22px' }}>
+        {rows.map((r, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <span style={{ width: 9, height: 9, borderRadius: 3, background: r.color, flex: '0 0 auto' }} />
+            <span style={{ fontSize: 13, color: 'var(--text-2)', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.label}</span>
+            <span className="num mono" style={{ fontSize: 13 }}>{fmtEur(r.v)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }

@@ -11,6 +11,7 @@
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/space-grotesk": "^5.2.10",
+    "firebase": "^12.16.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

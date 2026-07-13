@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AppState, Debt as DebtT } from '../types';
-import { type Budget, fmtEur, fmtMonth, NOW } from '../engine';
-import { Bar, Btn, Card, Empty, Field, Icon, IconBtn, MoneyInput, PageHead, Pill, Sheet, StatRow, TextInput } from '../ui';
+import { type Budget, fmtEur, fmtMonth, NOW, ordinal } from '../engine';
+import { Bar, Btn, Card, Empty, Field, Icon, IconBtn, MoneyInput, PageHead, Pill, Select, Sheet, StatRow, TextInput } from '../ui';
 
 type Upd = (u: Partial<AppState> | ((s: AppState) => AppState)) => void;
 
@@ -48,6 +48,7 @@ export function Debt({ state, b, update }: { state: AppState; b: Budget; update:
                   <div>
                     <h3 style={{ fontSize: 16 }}>{d.name}</h3>
                     <div style={{ display: 'flex', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
+                      {d.payday ? <Pill color="var(--text-2)">due {ordinal(d.payday)}</Pill> : null}
                       {d.apr ? <Pill color="var(--amber)">{d.apr}% APR</Pill> : null}
                       {payoff && <Pill color="var(--text-2)"><Icon name="cal" size={11} /> clear {fmtMonth(payoff)}</Pill>}
                     </div>
@@ -101,9 +102,13 @@ function DebtSheet({ item, onClose, onSave }: { item: DebtT | null; onClose: () 
         <Field label="Monthly payment"><MoneyInput value={d.monthly} onChange={(v) => set('monthly', v)} /></Field>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        {!isNew && <Field label="Original balance" hint="For paid-down %"><MoneyInput value={d.start} onChange={(v) => set('start', v)} /></Field>}
+        <Field label="Paydate" hint="Day of the month it's due">
+          <Select value={String(d.payday ?? 1)} onChange={(v) => set('payday', Number(v))}
+            options={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: ordinal(i + 1) }))} />
+        </Field>
         <Field label="Interest (APR %)" hint="Optional"><MoneyInput prefix="%" value={d.apr ?? ''} onChange={(v) => set('apr', v)} /></Field>
       </div>
+      {!isNew && <Field label="Original balance" hint="For paid-down %"><MoneyInput value={d.start} onChange={(v) => set('start', v)} /></Field>}
     </Sheet>
   );
 }

@@ -38,19 +38,70 @@ Open http://localhost:5173. State persists to `localStorage`
 - **Goals** — priority reorder, optional deadlines, required/funded per month.
 - **Personal** — spending budgets + the sweep into your top open goal.
 
-## Money in (the interactive distribution flow)
+## Two income paths
 
-The handoff is a planner; Mintly keeps Jelmer's interactive flow on top. Press
-**💰 Salary in** or **🎁 Extra / gift**: it asks your current account balances,
-suggests a split based on the engine (keeping enough on the main account for the
-bills), lets you adjust until every euro has a job, updates your goals/debts/
-balances, and shows the exact transfers to make.
+Onboarding asks how you get paid: **Weekly / Every 4 weeks / Monthly /
+Manual (variable)**.
+
+- **Path A — scheduled:** the Home dashboard shows how each payday should be
+  split across four categories — Money for expenses, Money for debts, Money
+  for saving goals, Private money — in per-payday amounts (with monthly
+  equivalents).
+- **Path B — manual:** the dashboard waits for funding with a prominent
+  **Add income** button.
+
+**Add income** (both paths) runs the prioritized allocation engine:
+1. *"What is the current balance of your main account?"* + the new income
+   amount.
+2. **Cover essentials** — checks balance + income against 100% of upcoming
+   expenses & debts (each with its paydate) and shows what stays on the main
+   account. If short, everything stays put.
+3. **What's left** — the remainder, shown explicitly as private money.
+4. Optional **savings allocation with integrity check**: before depositing,
+   each goal shows its current amount and asks whether it's still accurate
+   (did you take money out?) with an inline field to correct the baseline.
+5. Transfer summary; goals and the main-account balance update automatically.
+
+## Data & sync (Firebase)
+
+Mintly syncs your budget across devices with **Google sign-in + Firestore**.
+Until a Firebase config is pasted in, the app automatically runs in
+**local-only mode** (localStorage, no login — an amber "no sync" pill shows in
+the header).
+
+One-time setup (~5 minutes, all in [console.firebase.google.com](https://console.firebase.google.com)):
+
+1. **Create a project** (e.g. `mintly`). Google Analytics: off is fine.
+2. **Authentication → Sign-in method → Google → Enable.**
+3. **Authentication → Settings → Authorized domains → Add domain:**
+   `mintlybudgetapp.netlify.app` (localhost is already allowed).
+4. **Firestore Database → Create database** (production mode, region
+   `europe-west4`), then under **Rules** paste:
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /users/{uid} {
+         allow read, write: if request.auth != null && request.auth.uid == uid;
+       }
+     }
+   }
+   ```
+5. **Project settings → General → Your apps → Add app → Web** (no hosting),
+   then copy the `firebaseConfig` object into `src/firebase-config.ts`.
+6. Commit + push — Netlify redeploys and the login screen appears.
+
+How it behaves: each user gets one Firestore document (`users/{uid}`) holding
+the whole budget. Writes are debounced; the Firestore offline cache keeps the
+app working without a connection. On your first login, any data already on
+that device is migrated up automatically. The config values are not secrets —
+security comes from the rules above.
 
 ## Deploy as a website
 
-Mintly is a **static single-page app** — no backend. It uses hash-based routing
-and stores all data in the browser's `localStorage` (per browser/device), so any
-static file host works with no special configuration.
+Mintly is a **static single-page app** — no server of your own needed. It uses
+hash-based routing, so any static file host works with no special
+configuration.
 
 Build the static site:
 

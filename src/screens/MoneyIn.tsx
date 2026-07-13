@@ -1,112 +1,109 @@
 import { useMemo, useState } from 'react';
 import type { AppState, MoneyEvent } from '../types';
-import { type Budget, CADENCE, computeBudget, fmtEur, uid } from '../engine';
+import { computeBudget, fmtEur, ordinal, uid } from '../engine';
 import { Btn, Field, Icon, MoneyInput, Sheet, TextInput } from '../ui';
 
 type Upd = (u: Partial<AppState> | ((s: AppState) => AppState)) => void;
-type Kind = 'salary' | 'extra';
 
-interface Target { key: string; label: string; hint?: string }
+const r2 = (v: number) => Math.round(v * 100) / 100;
+const TEAL = 'var(--teal)';
 
-const r2 = (n: number) => Math.round(n * 100) / 100;
-
-export function MoneyIn({ kind, state, update, onClose }: { kind: Kind; state: AppState; update: Upd; onClose: () => void }) {
+/**
+ * Prioritized allocation engine:
+ *  0. balance check + income input
+ *  1. cover essentials (expenses + debts) and show coverage
+ *  2. show "what's left" and ask about saving
+ *  3. optional savings allocation with goal-accuracy integrity check
+ *  4. summary + apply
+ */
+export function MoneyIn({ state, update, onClose }: { state: AppState; update: Upd; onClose: () => void }) {
   const b = useMemo(() => computeBudget(state), [state]);
-  const perMonth = CADENCE[state.salary.cadence].perMonth;
-  const pp = (monthly: number) => monthly / perMonth;
-  const expectedSalary = r2(pp(b.salM));
+  const scheduled = state.salary.cadence !== 'manual';
+  const essentials = r2(b.expensesTotal + b.debtTotal);
 
   const [step, setStep] = useState(0);
-  const [mainBal, setMainBal] = useState<number | ''>(
-    kind === 'salary' ? r2(state.mainBalance + expectedSalary) : state.mainBalance,
-  );
-  const [savBal, setSavBal] = useState<number | ''>(state.savingsBalance);
-  const [extraAmt, setExtraAmt] = useState<number | ''>('');
-  const [label, setLabel] = useState(kind === 'salary' ? 'Salary' : 'Gift');
-  const [alloc, setAlloc] = useState<Record<string, number>>({});
-  const [transfers, setTransfers] = useState<null | { savings: number; personal: number; debts: { name: string; v: number }[]; main: number }>(null);
+  const [label, setLabel] = useState(scheduled ? 'Salary' : 'Income');
+  const [mainBal, setMainBal] = useState<number | ''>(state.mainBalance);
+  const [amount, setAmount] = useState<number | ''>(scheduled ? state.salary.amount : '');
+  /** Corrected goal baselines (integrity check) — goal id → amount. */
+  const [baseline, setBaseline] = useState<Record<string, number | ''>>({});
+  /** New deposits per goal. */
+  const [dep, setDep] = useState<Record<string, number | ''>>({});
+  const [result, setResult] = useState<null | {
+    keepOnMain: number; toSavings: { name: string; v: number }[]; priv: number; covered: boolean;
+  }>(null);
 
-  const amount = kind === 'extra' ? (Number(extraAmt) || 0) : (Number(mainBal) || 0);
-  const targets = useMemo<Target[]>(() => buildTargets(kind, state, b), [kind, state, b]);
+  const total = r2((Number(mainBal) || 0) + (Number(amount) || 0));
+  const covered = total >= essentials - 0.005;
+  const leftover = r2(Math.max(0, total - essentials));
+  const openGoals = [...state.goals]
+    .sort((a, c) => a.priority - c.priority)
+    .filter((g) => Number(g.target) > 0);
+  const depSum = r2(openGoals.reduce((s, g) => s + (Number(dep[g.id]) || 0), 0));
+  const remaining = r2(leftover - depSum);
 
-  function suggest(): Record<string, number> {
-    const out: Record<string, number> = {};
-    let leftover = amount;
-    const give = (key: string, want: number) => {
-      const x = Math.min(Math.max(0, r2(want)), r2(leftover));
-      if (x > 0.004) { out[key] = r2((out[key] || 0) + x); leftover = r2(leftover - x); }
-    };
-    if (kind === 'salary') {
-      give('bills', pp(b.expensesTotal + b.debtTotal));
-      for (const g of b.dated) give('goal-' + g.id, pp(g.funded));
-      give('pers', pp(b.personalBudgetsTotal));
-      if (b.topOpen) give('goal-' + b.topOpen.id, pp(b.sweep));
-    } else {
-      for (const g of b.goals) if (g.hasDeadline && !g.onTrack) give('goal-' + g.id, g.remaining);
-      for (const g of b.goals) give('goal-' + g.id, g.remaining - (out['goal-' + g.id] || 0));
-    }
-    give('free', leftover);
-    return out;
-  }
+  const goalBaseline = (id: string) => {
+    const g = state.goals.find((x) => x.id === id)!;
+    return baseline[id] !== undefined && baseline[id] !== '' ? Number(baseline[id]) : Number(g.saved) || 0;
+  };
 
-  const allocated = r2(targets.reduce((s, t) => s + (alloc[t.key] || 0), 0));
-  const left = r2(amount - allocated);
-  const canConfirm = Math.abs(left) < 0.005 && amount > 0;
-
-  function toStep1() { setAlloc(suggest()); setStep(1); }
-
-  function apply() {
-    const lines = targets.map((t) => ({ key: t.key, name: t.label, amount: alloc[t.key] || 0 })).filter((l) => l.amount > 0);
-    const goalSum = lines.filter((l) => l.key.startsWith('goal-')).reduce((s, l) => s + l.amount, 0);
-    const free = alloc['free'] || 0;
-    const pers = alloc['pers'] || 0;
-    const debtLines = state.debts
-      .filter((d) => (alloc['debt-' + d.id] || 0) > 0)
-      .map((d) => ({ name: d.name, v: alloc['debt-' + d.id] }));
-    const debtSum = debtLines.reduce((s, d) => s + d.v, 0);
-    const toSavings = r2(goalSum + free);
-    const newMain = r2(amount - toSavings - pers - debtSum);
-    const newSavings = r2((Number(savBal) || 0) + free);
-
-    update((s) => {
-      const goals = s.goals.map((g) => {
-        const x = alloc['goal-' + g.id] || 0;
-        return x > 0 ? { ...g, saved: r2((Number(g.saved) || 0) + x) } : g;
-      });
-      const debts = s.debts.map((d) => {
-        const x = alloc['debt-' + d.id] || 0;
-        return x > 0 ? { ...d, balance: r2(Math.max(0, (Number(d.balance) || 0) - x)) } : d;
-      });
-      const event: MoneyEvent = { id: uid('ev'), date: new Date().toISOString(), kind, label, amount, lines };
-      return { ...s, goals, debts, mainBalance: newMain, savingsBalance: newSavings, events: [...s.events, event] };
+  function apply(withSavings: boolean) {
+    const deposits = openGoals
+      .map((g) => ({ id: g.id, name: g.name, v: withSavings ? r2(Number(dep[g.id]) || 0) : 0 }))
+      .filter((d) => d.v > 0);
+    const goals = state.goals.map((g) => {
+      const base = goalBaseline(g.id);
+      const d = deposits.find((x) => x.id === g.id)?.v ?? 0;
+      const next = r2(base + d);
+      return next !== (Number(g.saved) || 0) ? { ...g, saved: next } : g;
     });
+    const toSavingsSum = r2(deposits.reduce((s, d) => s + d.v, 0));
+    const keepOnMain = covered ? essentials : total;
+    const priv = covered ? r2(leftover - toSavingsSum) : 0;
 
-    setTransfers({ savings: toSavings, personal: pers, debts: debtLines, main: newMain });
-    setStep(2);
+    const event: MoneyEvent = {
+      id: uid('ev'), date: new Date().toISOString(), kind: 'income', label,
+      amount: Number(amount) || 0,
+      lines: [
+        { key: 'essentials', name: 'Kept for bills & debts', amount: keepOnMain },
+        ...deposits.map((d) => ({ key: 'goal-' + d.id, name: d.name, amount: d.v })),
+        ...(priv > 0 ? [{ key: 'private', name: 'Private money', amount: priv }] : []),
+      ],
+    };
+    update((s) => ({ ...s, goals, mainBalance: keepOnMain, events: [...s.events, event] }));
+    setResult({ keepOnMain, toSavings: deposits.map((d) => ({ name: d.name, v: d.v })), priv, covered });
+    setStep(4);
   }
 
-  const title = kind === 'salary' ? '💰 Salary in' : '🎁 Extra money in';
+  const essRows = [
+    ...state.expenses.map((e) => ({ name: e.name, day: e.payday, v: Number(e.amount) || 0, kind: 'expense' })),
+    ...state.debts.filter((d) => Number(d.balance) > 0).map((d) => ({ name: d.name, day: d.payday ?? 1, v: Number(d.monthly) || 0, kind: 'debt' })),
+  ].filter((r) => r.v > 0).sort((a, c) => (a.day ?? 1) - (c.day ?? 1));
 
   return (
-    <Sheet open onClose={step === 1 ? () => undefined : onClose} title={title}
-      footer={step === 2 ? <Btn variant="primary" icon="check" onClick={onClose}>Done</Btn> : undefined}>
+    <Sheet open onClose={step === 4 ? onClose : () => { if (confirm('Stop without allocating?')) onClose(); }}
+      title="💶 Add income"
+      footer={step === 4 ? <Btn variant="primary" icon="check" onClick={onClose}>Done</Btn> : undefined}>
+
       {step === 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {kind === 'salary'
-            ? <p style={{ fontSize: 14, color: 'var(--text-2)', marginTop: 0, lineHeight: 1.5 }}>Got paid? 🎉 Check your balances and we'll show exactly how to split it — keeping enough on your main account for the bills.</p>
-            : <p style={{ fontSize: 14, color: 'var(--text-2)', marginTop: 0, lineHeight: 1.5 }}>Nice! 🥳 Tell us the amount and we'll suggest where it should go.</p>}
-          {kind === 'extra' && (
-            <>
-              <Field label="What is it?"><TextInput value={label} onChange={setLabel} placeholder="e.g. birthday, tax refund" /></Field>
-              <Field label="Amount received"><MoneyInput value={extraAmt} onChange={setExtraAmt} /></Field>
-            </>
-          )}
-          <Field label={`Balance on ${state.meta.mainName} now`} hint={kind === 'salary' ? 'Prefilled with your expected pay added' : undefined}>
+          <p style={{ fontSize: 14, color: 'var(--text-2)', marginTop: 0, lineHeight: 1.5 }}>
+            {scheduled
+              ? 'Got paid? Let’s check your balance and split this payday. 🎉'
+              : 'New money in — let’s make sure the bills are covered first, then split the rest. 🎉'}
+          </p>
+          <Field label="What is the current balance of your main account?" hint="As it is right now, before this income lands.">
             <MoneyInput value={mainBal} onChange={setMainBal} />
           </Field>
-          <Field label="Free savings balance now"><MoneyInput value={savBal} onChange={setSavBal} /></Field>
-          <Btn variant="primary" style={{ justifyContent: 'center', padding: '13px' }} disabled={amount <= 0} onClick={toStep1}>
-            Distribute {fmtEur(amount)} →
+          <Field label="New income amount">
+            <MoneyInput value={amount} onChange={setAmount} />
+          </Field>
+          <Field label="Label (optional)">
+            <TextInput value={label} onChange={setLabel} placeholder="e.g. salary, invoice, gift" />
+          </Field>
+          <Btn variant="primary" style={{ justifyContent: 'center', padding: 13 }}
+            disabled={(Number(amount) || 0) <= 0} onClick={() => setStep(1)}>
+            Continue →
           </Btn>
         </div>
       )}
@@ -114,42 +111,155 @@ export function MoneyIn({ kind, state, update, onClose }: { kind: Kind; state: A
       {step === 1 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{
-            position: 'sticky', top: 0, zIndex: 2, textAlign: 'center', padding: '10px 12px', borderRadius: 10,
-            background: 'var(--bg-2)',
-            border: `1px solid ${Math.abs(left) < 0.005 ? 'var(--accent)' : left < 0 ? 'var(--rose)' : 'var(--line)'}`,
-            color: Math.abs(left) < 0.005 ? 'var(--accent)' : left < 0 ? 'var(--rose)' : 'var(--text)', fontSize: 14,
+            display: 'flex', gap: 10, alignItems: 'center', padding: '12px 14px', borderRadius: 12,
+            background: covered ? 'color-mix(in oklch, var(--accent) 10%, transparent)' : 'color-mix(in oklch, var(--amber) 12%, transparent)',
+            border: `1px solid ${covered ? 'color-mix(in oklch, var(--accent) 35%, transparent)' : 'color-mix(in oklch, var(--amber) 40%, transparent)'}`,
           }}>
-            {Math.abs(left) < 0.005 ? '✨ Every euro has a job!' : left > 0 ? <>Left to allocate: <b className="num mono">{fmtEur(left)}</b></> : <>Over by <b className="num mono">{fmtEur(-left)}</b></>}
+            <Icon name={covered ? 'check' : 'flag'} size={19} stroke={covered ? 'var(--accent)' : 'var(--amber)'} />
+            <div style={{ fontSize: 13.5, lineHeight: 1.45 }}>
+              {covered
+                ? <>Balance + income (<b className="num mono">{fmtEur(total)}</b>) covers <b>100%</b> of your upcoming bills and debt payments.</>
+                : <>Balance + income (<b className="num mono">{fmtEur(total)}</b>) is <b className="num mono">{fmtEur(essentials - total)}</b> short of your upcoming bills — everything stays on your main account this time.</>}
+            </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {targets.map((t) => (
-              <div key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--line-2)' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</div>
-                  {t.hint && <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{t.hint}</div>}
+
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>1 · Cover essentials first</div>
+            <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 12 }}>
+              {essRows.map((r, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--line-2)', fontSize: 13 }}>
+                  <Icon name={r.kind === 'debt' ? 'card' : 'cart'} size={15} stroke={r.kind === 'debt' ? 'var(--violet)' : 'var(--blue)'} />
+                  <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
+                  <span style={{ color: 'var(--text-3)', fontSize: 11.5 }}>{r.day ? ordinal(r.day) : ''}</span>
+                  <span className="num mono">{fmtEur(r.v)}</span>
                 </div>
-                <MoneyInput value={alloc[t.key] ?? 0} onChange={(n) => setAlloc((a) => ({ ...a, [t.key]: Number(n) || 0 }))} style={{ width: 120, flex: '0 0 auto' }} align="right" />
-              </div>
-            ))}
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontSize: 13.5 }}>
+              <span style={{ color: 'var(--text-2)' }}>Money for expenses</span>
+              <b className="num mono" style={{ color: 'var(--blue)' }}>{fmtEur(b.expensesTotal)}</b>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5, fontSize: 13.5 }}>
+              <span style={{ color: 'var(--text-2)' }}>Money for debts</span>
+              <b className="num mono" style={{ color: 'var(--violet)' }}>{fmtEur(b.debtTotal)}</b>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--line)', fontSize: 14 }}>
+              <b>Stays on your main account</b>
+              <b className="num mono">{fmtEur(Math.min(total, essentials))}</b>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {left > 0.004 && <Btn variant="ghost" onClick={() => setAlloc((a) => ({ ...a, free: r2((a.free || 0) + left) }))}>Rest → free savings</Btn>}
-            <Btn variant="dim" onClick={() => setAlloc(suggest())}>↻ Re-suggest</Btn>
-            <Btn variant="primary" icon="check" disabled={!canConfirm} onClick={apply}>Allocate</Btn>
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn variant="dim" onClick={() => setStep(0)}>← Back</Btn>
+            <Btn variant="primary" onClick={() => (covered ? setStep(2) : apply(false))}>
+              {covered ? 'Continue →' : 'Keep it all for bills'}
+            </Btn>
           </div>
         </div>
       )}
 
-      {step === 2 && transfers && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>🎉 Done! Make these transfers:</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {transfers.savings > 0 && <TransferRow icon="target" label="To your savings" v={transfers.savings} />}
-            {transfers.personal > 0 && <TransferRow icon="user" label={`To ${state.meta.personalName}`} v={transfers.personal} />}
-            {transfers.debts.map((d) => <TransferRow key={d.name} icon="card" label={`Extra payoff: ${d.name}`} v={d.v} />)}
-            <TransferRow icon="wallet" label={`Keep on ${state.meta.mainName}`} v={transfers.main} dashed />
+      {step === 2 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ textAlign: 'center', padding: '10px 0 2px' }}>
+            <div className="eyebrow">2 · What's left</div>
+            <div className="num" style={{ fontSize: 46, fontWeight: 600, letterSpacing: '-0.04em', color: 'var(--accent)', marginTop: 8 }}>
+              {fmtEur(leftover)}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 4 }}>private / discretionary money after all bills and debts</div>
           </div>
-          <p style={{ fontSize: 12.5, color: 'var(--text-3)', margin: 0 }}>Enough stays on your main account for the bills, and your goals are updated. 💪</p>
+          <p style={{ fontSize: 14.5, textAlign: 'center', margin: '4px 0' }}>
+            Would you like to put some of this leftover money toward a saving goal?
+          </p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Btn variant="ghost" style={{ flex: 1, justifyContent: 'center', padding: 12 }} onClick={() => apply(false)}>
+              No — keep it private
+            </Btn>
+            <Btn variant="primary" icon="target" style={{ flex: 1, justifyContent: 'center', padding: 12 }}
+              disabled={openGoals.length === 0} onClick={() => setStep(3)}>
+              Yes, toward a goal
+            </Btn>
+          </div>
+          {openGoals.length === 0 && (
+            <p style={{ fontSize: 12, color: 'var(--text-3)', textAlign: 'center', margin: 0 }}>No saving goals yet — add one on the Goals tab.</p>
+          )}
+        </div>
+      )}
+
+      {step === 3 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{
+            padding: '10px 14px', borderRadius: 12, fontSize: 12.5, lineHeight: 1.5,
+            background: 'color-mix(in oklch, var(--amber) 10%, transparent)',
+            border: '1px solid color-mix(in oklch, var(--amber) 30%, transparent)',
+          }}>
+            <b>Quick check:</b> is the current amount in each goal still accurate — or did you
+            take money from it for something else? Correct the <i>current</i> field first, then
+            enter your deposit.
+          </div>
+
+          <div style={{
+            position: 'sticky', top: 0, zIndex: 2, textAlign: 'center', padding: '9px 12px', borderRadius: 10,
+            background: 'var(--bg-2)', fontSize: 13.5,
+            border: `1px solid ${remaining < -0.005 ? 'var(--rose)' : 'var(--line)'}`,
+            color: remaining < -0.005 ? 'var(--rose)' : 'var(--text)',
+          }}>
+            {remaining < -0.005
+              ? <>Over by <b className="num mono">{fmtEur(-remaining)}</b> — you only have {fmtEur(leftover)} left</>
+              : <>Left to allocate: <b className="num mono">{fmtEur(remaining)}</b> of {fmtEur(leftover)}</>}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 320, overflowY: 'auto' }}>
+            {openGoals.map((g) => {
+              const base = goalBaseline(g.id);
+              const target = Number(g.target) || 0;
+              return (
+                <div key={g.id} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: '10px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <Icon name="target" size={15} stroke={TEAL} />
+                    <span style={{ fontSize: 13.5, fontWeight: 600, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.name}</span>
+                    <span className="num mono" style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{fmtEur(base)} / {fmtEur(target)}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <div className="eyebrow" style={{ fontSize: 9, marginBottom: 4 }}>Current (correct if needed)</div>
+                      <MoneyInput value={baseline[g.id] ?? (Number(g.saved) || 0)}
+                        onChange={(v) => setBaseline((s) => ({ ...s, [g.id]: v }))} />
+                    </div>
+                    <div>
+                      <div className="eyebrow" style={{ fontSize: 9, marginBottom: 4 }}>Deposit now</div>
+                      <MoneyInput value={dep[g.id] ?? ''}
+                        onChange={(v) => setDep((s) => ({ ...s, [g.id]: v }))} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn variant="dim" onClick={() => setStep(2)}>← Back</Btn>
+            <Btn variant="primary" icon="check" disabled={remaining < -0.005} onClick={() => apply(true)}>
+              Allocate {depSum > 0 ? fmtEur(depSum) : ''}
+            </Btn>
+          </div>
+        </div>
+      )}
+
+      {step === 4 && result && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>
+            {result.covered ? '🎉 Allocated! Make these transfers:' : '📌 Bills first — everything stays put:'}
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <TransferRow icon="wallet" label="Keep on main account (bills & debts)" v={result.keepOnMain} dashed />
+            {result.toSavings.map((s) => <TransferRow key={s.name} icon="target" label={`To savings: ${s.name}`} v={s.v} />)}
+            {result.priv > 0 && <TransferRow icon="user" label="Private money — pay yourself" v={result.priv} />}
+          </div>
+          <p style={{ fontSize: 12.5, color: 'var(--text-3)', margin: 0 }}>
+            {result.covered
+              ? 'Your goals and balance are updated. 💪'
+              : 'Not enough for all bills this time — nothing was moved to savings or private money.'}
+          </p>
         </div>
       )}
     </Sheet>
@@ -164,19 +274,4 @@ function TransferRow({ icon, label, v, dashed }: { icon: string; label: string; 
       <span className="num mono" style={{ fontSize: 14.5, color: 'var(--accent)' }}>{fmtEur(v)}</span>
     </div>
   );
-}
-
-function buildTargets(kind: Kind, state: AppState, b: Budget): Target[] {
-  const t: Target[] = [];
-  if (kind === 'salary') {
-    t.push({ key: 'bills', label: `Keep on ${state.meta.mainName}`, hint: 'fixed expenses + debt' });
-    for (const g of b.dated) t.push({ key: 'goal-' + g.id, label: g.name, hint: 'dated goal' });
-    t.push({ key: 'pers', label: `Pay yourself → ${state.meta.personalName}`, hint: 'spending budgets' });
-    if (b.topOpen) t.push({ key: 'goal-' + b.topOpen.id, label: b.topOpen.name, hint: 'catches the rest' });
-  } else {
-    for (const g of b.goals) if (Number(g.saved) < Number(g.target)) t.push({ key: 'goal-' + g.id, label: g.name, hint: g.hasDeadline ? 'dated goal' : 'goal' });
-    for (const d of state.debts) if (Number(d.balance) > 0) t.push({ key: 'debt-' + d.id, label: 'Extra payoff: ' + d.name, hint: 'reduce debt' });
-  }
-  t.push({ key: 'free', label: 'Free savings', hint: 'buffer with no goal' });
-  return t;
 }

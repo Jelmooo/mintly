@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { StoreProvider, onboarding, useStore } from './store';
+import { useEffect, useMemo, useState } from 'react';
+import { StoreProvider, useStore } from './store';
 import { computeBudget, CADENCE } from './engine';
 import { Icon, Pill } from './ui';
 import { Overview } from './screens/Overview';
@@ -10,6 +10,7 @@ import { Goals } from './screens/Goals';
 import { Personal } from './screens/Personal';
 import { Onboarding } from './screens/Onboarding';
 import { MoneyIn } from './screens/MoneyIn';
+import { Login } from './screens/Login';
 import iconUrl from './assets/Icon.svg';
 
 const NAV = [
@@ -21,33 +22,19 @@ const NAV = [
   { id: 'personal', label: 'Personal', icon: 'user' },
 ];
 
-function fmtClock() {
-  const d = new Date();
-  return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
-}
-
-function StatusBar() {
-  const [now, setNow] = useState(fmtClock);
-  useEffect(() => { const id = setInterval(() => setNow(fmtClock()), 15000); return () => clearInterval(id); }, []);
+function Splash({ label }: { label: string }) {
   return (
-    <div className="app-status">
-      <span className="num">{now}</span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--text-2)' }}>
-        <Icon name="wifi" size={15} />
-        <span style={{ display: 'inline-block', width: 24, height: 12, border: '1.5px solid var(--text-2)', borderRadius: 3, position: 'relative' }}>
-          <span style={{ position: 'absolute', top: 1.5, left: 1.5, bottom: 1.5, width: '65%', background: 'var(--text-2)', borderRadius: 1 }} />
-        </span>
-      </span>
+    <div className="login app-bg">
+      <img src={iconUrl} alt="" style={{ width: 44, height: 44, opacity: 0.9 }} />
+      <p style={{ color: 'var(--text-2)', fontSize: 14 }}>{label}</p>
     </div>
   );
 }
 
 function Shell() {
-  const { state, update, reset } = useStore();
+  const { state, update, reset, cloud, user, authLoading, syncing, onboarded, setOnboarded, signOutUser } = useStore();
   const [tab, setTab] = useState(() => location.hash.replace('#', '') || 'overview');
-  const [onb, setOnb] = useState(() => !onboarding.done());
-  const [money, setMoney] = useState<null | 'salary' | 'extra'>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [money, setMoney] = useState(false);
 
   useEffect(() => {
     function onHash() { const h = location.hash.replace('#', ''); if (h) setTab(h); }
@@ -56,16 +43,19 @@ function Shell() {
   }, []);
 
   function go(id: string) {
-    setTab(id); location.hash = id;
-    scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    setTab(id);
+    location.hash = id;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
-  function finishOnb() { onboarding.finish(); setOnb(false); go('overview'); }
-  function replayOnb() { onboarding.replay(); setOnb(true); }
 
   const b = useMemo(() => computeBudget(state), [state]);
 
+  if (cloud && authLoading) return <Splash label="Starting up…" />;
+  if (cloud && !user) return <Login />;
+  if (cloud && syncing) return <Splash label="Loading your budget…" />;
+
   const screens: Record<string, React.ReactNode> = {
-    overview: <Overview state={state} b={b} onNav={go} onMoneyIn={setMoney} />,
+    overview: <Overview state={state} b={b} onNav={go} onMoneyIn={() => setMoney(true)} />,
     income: <Income state={state} b={b} update={update} />,
     expenses: <Expenses state={state} b={b} update={update} />,
     debt: <Debt state={state} b={b} update={update} />,
@@ -74,53 +64,56 @@ function Shell() {
   };
 
   return (
-    <div className="device-bg">
-      <div className="phone">
-        <StatusBar />
-        <header className="app-head">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <img src={iconUrl} alt="" style={{ width: 30, height: 30 }} />
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1 }}>Mintly</div>
-              <div className="eyebrow" style={{ fontSize: 8.5, marginTop: 2 }}>financial control</div>
-            </div>
+    <div className="site">
+      <header className="site-head">
+        <div className="brand">
+          <img src={iconUrl} alt="" style={{ width: 32, height: 32 }} />
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1 }}>Mintly</div>
+            <div className="eyebrow" style={{ fontSize: 8.5, marginTop: 2 }}>financial control</div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Pill color="var(--text-2)">{CADENCE[state.salary.cadence].label}</Pill>
-            <button onClick={replayOnb} title="Re-run setup" style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'var(--surface-2)', border: '1px solid var(--line)', color: 'var(--text-2)' }}>
-              <Icon name="flag" size={16} />
-            </button>
-          </div>
-        </header>
-
-        <div className="app-scroll" ref={scrollRef}>
-          {screens[tab] || screens.overview}
         </div>
+        <div className="head-right">
+          {!cloud && <Pill color="var(--amber)" style={{ flexShrink: 0 }}>no sync</Pill>}
+          <Pill color="var(--text-2)" style={{ flexShrink: 0 }}>{CADENCE[state.salary.cadence].label}</Pill>
+          <button onClick={() => setOnboarded(false)} title="Re-run setup" className="head-btn">
+            <Icon name="flag" size={16} />
+          </button>
+          {cloud && user && (
+            <button
+              className="head-btn"
+              title={`Signed in as ${user.displayName ?? user.email ?? ''} — click to sign out`}
+              onClick={() => { if (confirm('Sign out of Mintly?')) void signOutUser(); }}
+            >
+              {user.photoURL
+                ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                : <Icon name="user" size={16} />}
+            </button>
+          )}
+        </div>
+      </header>
 
-        <nav className="app-tabs">
-          {NAV.map((n) => {
-            const on = tab === n.id;
-            return (
-              <button key={n.id} onClick={() => go(n.id)} style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: 1,
-                background: 'none', border: 'none', color: on ? 'var(--accent)' : 'var(--text-3)', padding: '6px 1px',
-              }}>
-                <Icon name={n.icon} size={20} />
-                <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '-0.01em' }}>{n.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+      <nav className="tabs">
+        {NAV.map((n) => (
+          <button key={n.id} onClick={() => go(n.id)} className={`tab-btn ${tab === n.id ? 'on' : ''}`}>
+            <Icon name={n.icon} size={20} />
+            <span>{n.label}</span>
+          </button>
+        ))}
+      </nav>
 
-        {money && <MoneyIn kind={money} state={state} update={update} onClose={() => setMoney(null)} />}
+      <main className="site-main">
+        {screens[tab] || screens.overview}
+      </main>
 
-        {onb && (
-          <Onboarding
-            onFinish={(draft) => { update(draft); finishOnb(); }}
-            onSkip={() => { reset(); finishOnb(); }}
-          />
-        )}
-      </div>
+      {money && <MoneyIn state={state} update={update} onClose={() => setMoney(false)} />}
+
+      {!onboarded && (
+        <Onboarding
+          onFinish={(draft) => { update(draft); setOnboarded(true); go('overview'); }}
+          onSkip={() => { reset(); setOnboarded(true); go('overview'); }}
+        />
+      )}
     </div>
   );
 }

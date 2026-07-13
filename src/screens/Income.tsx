@@ -28,15 +28,28 @@ export function Income({ state, b, update }: { state: AppState; b: Budget; updat
             <h3 style={{ fontSize: 17 }}>Salary</h3>
           </div>
           <Segmented value={sal.cadence}
-            options={[{ value: 'weekly', label: 'Weekly' }, { value: 'fourweek', label: '4-weekly' }, { value: 'monthly', label: 'Monthly' }]}
+            options={[{ value: 'weekly', label: 'Weekly' }, { value: 'fourweek', label: '4-weekly' }, { value: 'monthly', label: 'Monthly' }, { value: 'manual', label: 'Manual' }]}
             onChange={(c) => update((s) => ({ ...s, salary: { ...s.salary, cadence: c } }))} />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 22 }}>
+        {sal.cadence === 'manual' ? (
+          <div style={{ background: 'var(--bg-2)', borderRadius: 'var(--r)', padding: 20 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <Icon name="coins" size={20} style={{ color: 'var(--accent)' }} />
+              <b style={{ fontSize: 15 }}>Variable income</b>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-2)', margin: '8px 0 0', lineHeight: 1.5 }}>
+              You enter your income each time it arrives — press <b style={{ color: 'var(--text)' }}>Add income</b> on
+              the Home tab. Mintly first checks that your bills and debts are covered, then helps you split
+              what's left. Allowances below still count monthly.
+            </p>
+          </div>
+        ) : (
+        <div className="grid2 inc" style={{ gap: 22 }}>
           <div>
             <div className="eyebrow" style={{ marginBottom: 8 }}>Amount per {CADENCE[sal.cadence].label.toLowerCase()} pay</div>
             <MoneyInput value={sal.amount} onChange={(v) => update((s) => ({ ...s, salary: { ...s.salary, amount: v } }))} style={{ maxWidth: 260 }} />
             <div style={{ display: 'flex', gap: 18, marginTop: 16, flexWrap: 'wrap' }}>
-              {Object.entries(CADENCE).map(([k, c]) => (
+              {Object.entries(CADENCE).filter(([, c]) => c.perMonth > 0).map(([k, c]) => (
                 <div key={k} style={{ opacity: k === sal.cadence ? 1 : 0.5 }}>
                   <div className="eyebrow" style={{ fontSize: 10 }}>per {c.short}</div>
                   <div className="num mono" style={{ fontSize: 14, marginTop: 2 }}>{fmtEur(salM / c.perMonth)}</div>
@@ -50,6 +63,7 @@ export function Income({ state, b, update }: { state: AppState; b: Budget; updat
             <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6 }}>Everything is normalized to a month so your budget stays steady.</div>
           </div>
         </div>
+        )}
       </Card>
 
       <Card>

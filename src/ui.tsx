@@ -227,15 +227,8 @@ export function Sheet({ open, onClose, title, children, footer }: {
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div onClick={onClose} style={{
-      position: 'absolute', inset: 0, zIndex: 200, background: 'oklch(0 0 0 / 0.55)',
-      backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-    }}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        width: 'min(540px, 100%)', background: 'var(--surface)', border: '1px solid var(--line)',
-        borderRadius: 'var(--r-xl) var(--r-xl) 0 0', boxShadow: '0 -10px 60px -10px oklch(0 0 0 / 0.8)',
-        animation: 'pop .26s cubic-bezier(.2,.8,.2,1) both', maxHeight: '92%', display: 'flex', flexDirection: 'column',
-      }}>
+    <div onClick={onClose} className="sheet-wrap">
+      <div onClick={(e) => e.stopPropagation()} className="sheet-card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 22px 12px' }}>
           <h3 style={{ fontSize: 19 }}>{title}</h3>
           <button onClick={onClose} title="Close" style={{

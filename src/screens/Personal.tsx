@@ -37,6 +37,7 @@ export function Personal({ state, b, update, onNav }: { state: AppState; b: Budg
         </div>
       )}
 
+      <div className="grid2 pers">
       <Card>
         <h3 style={{ fontSize: 16, marginBottom: 14 }}>Spending budgets</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'var(--line-2)', borderRadius: 'var(--r)', overflow: 'hidden', border: '1px solid var(--line)' }}>
@@ -66,6 +67,7 @@ export function Personal({ state, b, update, onNav }: { state: AppState; b: Budg
         </div>
       </Card>
 
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <Card style={{ position: 'relative', overflow: 'hidden' }}>
         <div className="eyebrow">The rest goes to</div>
         {top ? (
@@ -93,6 +95,8 @@ export function Personal({ state, b, update, onNav }: { state: AppState; b: Budg
         <div className="eyebrow" style={{ marginBottom: 14 }}>How your pay splits</div>
         <SplitBar budget={b.personalBudgetsTotal} sweep={top ? b.sweep : 0} free={top ? 0 : Math.max(0, b.personalFree)} />
       </Card>
+      </div>
+      </div>
 
       <BudgetSheet item={edit} onClose={() => setEdit(null)} onSave={save} />
     </div>

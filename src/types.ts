@@ -1,4 +1,4 @@
-export type Cadence = 'weekly' | 'fourweek' | 'monthly';
+export type Cadence = 'weekly' | 'fourweek' | 'monthly' | 'manual';
 export type ExtraFreq = 'monthly' | 'yearly';
 export type IncomeKind =
   | 'salary' | 'travel' | 'side' | 'vacation' | 'bonus' | 'gifts' | 'refund' | 'other';
@@ -52,6 +52,8 @@ export interface Debt {
   balance: number | '';
   monthly: number | '';
   apr?: number | '';
+  /** Day of month the payment is due (1..31). */
+  payday?: number;
 }
 
 export interface Goal {
@@ -69,7 +71,7 @@ export interface Goal {
 export interface MoneyEvent {
   id: string;
   date: string;
-  kind: 'salary' | 'extra';
+  kind: 'salary' | 'extra' | 'income';
   label: string;
   amount: number;
   lines: { key: string; name: string; amount: number }[];

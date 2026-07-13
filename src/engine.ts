@@ -40,6 +40,8 @@ export const CADENCE: Record<Cadence, { label: string; short: string; perMonth: 
   weekly:   { label: 'Weekly',   short: 'wk',  perMonth: 52 / 12 },
   fourweek: { label: '4-weekly', short: '4wk', perMonth: 13 / 12 },
   monthly:  { label: 'Monthly',  short: 'mo',  perMonth: 1 },
+  // Variable income: no fixed salary, money is added manually as it arrives.
+  manual:   { label: 'Manual',   short: 'var', perMonth: 0 },
 };
 
 export const CAT_COLORS = [
@@ -83,6 +85,7 @@ export function uid(p: string) { return p + Math.random().toString(36).slice(2, 
 
 // ---------- per-item monthly equivalents ----------
 export function salaryMonthly(salary: Salary) {
+  if (salary.cadence === 'manual') return 0; // variable — added as it arrives
   return n(salary.amount) * CADENCE[salary.cadence].perMonth;
 }
 export function extraMonthly(x: IncomeExtra) {
