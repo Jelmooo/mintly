@@ -33,7 +33,7 @@ export function Goals({ state, b, update }: { state: AppState; b: Budget; update
 
   return (
     <div className="fadeup" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <PageHead title="Savings goals" sub="Dated goals are funded first by priority. Your top goal without a deadline catches everything left in your personal account."
+      <PageHead title="Savings goals" sub="Dated goals are planned first by priority. Goals without a deadline you fund from leftover money whenever income arrives."
         action={<Btn variant="primary" icon="plus" onClick={() => setEdit({ id: '', name: '', target: '', saved: 0, deadline: '', priority: 0 })}>Add</Btn>} />
 
       <StatRow items={[
@@ -47,26 +47,25 @@ export function Goals({ state, b, update }: { state: AppState; b: Budget; update
         {goals.map((g, idx) => {
           const pct = Math.min(100, (Number(g.saved) / Number(g.target)) * 100 || 0);
           const open = !g.hasDeadline;
-          const isTopOpen = open && b.topOpen && b.topOpen.id === g.id;
           const dl = open ? null : new Date(g.deadline);
           const monthsLeft = open ? null : Math.max(0, Math.ceil(monthsBetween(NOW, dl as Date)));
           const ringColor = open ? TEAL : (g.onTrack ? TEAL : 'var(--amber)');
           return (
             <Card key={g.id}>
-              <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, flex: '0 0 auto' }}>
                   <button onClick={() => move(g.id, -1)} disabled={idx === 0} style={arrowBtn(idx === 0)}><Icon name="arrow" size={14} style={{ transform: 'rotate(-90deg)' }} /></button>
-                  <div className="mono" style={{ width: 30, height: 30, borderRadius: 9, display: 'grid', placeItems: 'center', background: 'var(--bg-2)', border: '1px solid var(--line)', fontSize: 13, fontWeight: 600 }}>{g.priority}</div>
+                  <div className="mono" style={{ width: 28, height: 28, borderRadius: 9, display: 'grid', placeItems: 'center', background: 'var(--bg-2)', border: '1px solid var(--line)', fontSize: 12.5, fontWeight: 600 }}>{g.priority}</div>
                   <button onClick={() => move(g.id, 1)} disabled={idx === goals.length - 1} style={arrowBtn(idx === goals.length - 1)}><Icon name="arrow" size={14} style={{ transform: 'rotate(90deg)' }} /></button>
                 </div>
-                <Ring pct={pct} size={66} thickness={8} color={ringColor}>
-                  <div className="num mono" style={{ fontSize: 13, fontWeight: 600 }}>{Math.round(pct)}%</div>
+                <Ring pct={pct} size={58} thickness={7} color={ringColor}>
+                  <div className="num mono" style={{ fontSize: 12, fontWeight: 600 }}>{Math.round(pct)}%</div>
                 </Ring>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <h3 style={{ fontSize: 15.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{g.name}</h3>
                     {open
-                      ? (isTopOpen ? <Pill color={TEAL}><Icon name="arrow" size={11} /> catches the rest</Pill> : <Pill color="var(--text-2)">no deadline</Pill>)
+                      ? <Pill color="var(--text-2)">no deadline</Pill>
                       : (g.onTrack ? <Pill color={TEAL}><Icon name="check" size={11} /> on track</Pill> : <Pill color="var(--amber)">underfunded</Pill>)}
                   </div>
                   <div className="num mono" style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 6 }}>{fmtEur(Number(g.saved))} <span style={{ color: 'var(--text-3)' }}>/ {fmtEur(Number(g.target))}</span></div>
@@ -82,7 +81,7 @@ export function Goals({ state, b, update }: { state: AppState; b: Budget; update
                   <>
                     <Metric label="Deadline" value="None" sub="ongoing" />
                     <Metric label="To go" value={fmtEur(g.remaining)} sub={'of ' + fmtEur(Number(g.target))} />
-                    <Metric label="Funding now" value={fmtEur(g.funded) + '/mo'} color={isTopOpen ? TEAL : 'var(--text-3)'} sub={isTopOpen ? 'from leftover' : 'raise priority'} />
+                    <Metric label="Funding" value="—" color="var(--text-3)" sub="fund from leftover" />
                   </>
                 ) : (
                   <>
@@ -144,7 +143,7 @@ function GoalSheet({ item, onClose, onSave }: { item: Goal | null; onClose: () =
         </Field>
       ) : (
         <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginTop: -4, lineHeight: 1.5 }}>
-          Open-ended. Your highest-priority goal without a deadline automatically catches everything left in your personal account each month.
+          Open-ended. You put money toward it from your leftover whenever income arrives — no fixed monthly amount.
         </div>
       )}
     </Sheet>

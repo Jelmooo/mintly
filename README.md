@@ -1,14 +1,15 @@
 # Mintly — Financial control
 
-A mobile-first personal budgeting **web app** built around an **allocation waterfall**:
-it takes your income, subtracts your obligations in a fixed priority order, and
-tells you exactly how much to pay yourself — splitting every euro across fixed
-expenses, debt, dated savings goals, and personal spending. Whatever's left
-sweeps into your top open-ended goal.
+A mobile-first personal budgeting **web app** built around **leftover
+allocation, strictly per pay period**: it looks at the bills and debt payments
+actually due in your current period (by paydate), covers those first, and shows
+what's genuinely left over — for you to allocate freely (spending, saving
+goals) when income arrives. No rigid category budgets.
 
 Built from the "Allot" design handoff (`_design_handoff/`), rebranded to Mintly
-using the logo/icon in `assets/`. The allocation engine (`src/engine.ts`,
-`computeBudget`) is ported logic-for-logic from the handoff.
+using the logo/icon in `assets/`. The engine lives in `src/engine.ts`
+(`computeBudget` for the monthly plan; `periodEssentials`/`periodWindowDays`
+for the per-period math).
 
 ## Run
 
@@ -20,47 +21,49 @@ npm run dev
 Open http://localhost:5173. State persists to `localStorage`
 (`allot.budget.v2`); onboarding flag is `allot.onboarded.v1`.
 
-## Two-account model
-
-- **Main account** — receives all income; pays fixed expenses, debt, and dated
-  savings goals.
-- **Personal account** — receives whatever's left ("pay yourself"); funds your
-  spending budgets; anything still left sweeps into your top open-ended goal.
-
 ## Screens (6 tabs)
 
-- **Home** — hero "paid to your personal account", the allocation waterfall bar,
-  the two-account flow, savings plan (progress rings), and a spend donut. Plus
-  the **Salary in** / **Extra / gift** buttons (see below).
-- **Income** — salary cadence (weekly / 4-weekly / monthly) + allowances/extras.
-- **Expenses** — fixed costs by category, payday, and a payment calendar.
-- **Debt** — paid-down progress + projected clear date.
-- **Goals** — priority reorder, optional deadlines, required/funded per month.
-- **Personal** — spending budgets + the sweep into your top open goal.
+- **Home** — hero "left over this period", a period bar, the bills **due this
+  period** (with days-until), the monthly plan, savings plan (progress rings)
+  and a spend donut. Plus the **Add income** button.
+- **Income** — salary cadence (weekly / 4-weekly / monthly / manual) + extras.
+- **Expenses** — fixed costs by category, paydate, and a payment calendar.
+- **Debt** — paid-down progress, paydate + projected clear date.
+- **Goals** — priority reorder, optional deadlines; dated goals get a planned
+  monthly amount, open-ended goals are funded from leftover.
+- **Settings** — payment-tracking mode, re-run onboarding, account/sign-out.
 
-## Two income paths
+## Period-based engine
 
-Onboarding asks how you get paid: **Weekly / Every 4 weeks / Monthly /
-Manual (variable)**.
+All allocation math is **per pay period, never grand totals**. The period
+window follows the cadence (weekly = 7 days, 4-weekly = 28, monthly/manual =
+until the same day next month), and only the bills/debt payments whose paydate
+falls inside the window count. Example: €600 comes in and €400 of bills fall
+due this period → €200 is left over, regardless of the monthly totals.
 
-- **Path A — scheduled:** the Home dashboard shows how each payday should be
-  split across four categories — Money for expenses, Money for debts, Money
-  for saving goals, Private money — in per-payday amounts (with monthly
-  equivalents).
+- **Path A — scheduled:** the dashboard computes this automatically per payday.
 - **Path B — manual:** the dashboard waits for funding with a prominent
   **Add income** button.
 
 **Add income** (both paths) runs the prioritized allocation engine:
 1. *"What is the current balance of your main account?"* + the new income
-   amount.
-2. **Cover essentials** — checks balance + income against 100% of upcoming
-   expenses & debts (each with its paydate) and shows what stays on the main
+   amount (prefilled per the tracking mode, see below).
+2. **Cover this period's essentials** — checks balance + income against 100%
+   of the bills & debts due in the window and shows what stays on the main
    account. If short, everything stays put.
-3. **What's left** — the remainder, shown explicitly as private money.
+3. **What's left** — the remainder, shown explicitly, yours to allocate.
 4. Optional **savings allocation with integrity check**: before depositing,
    each goal shows its current amount and asks whether it's still accurate
    (did you take money out?) with an inline field to correct the baseline.
 5. Transfer summary; goals and the main-account balance update automatically.
+
+## Payment tracking modes (Settings)
+
+- **Manual input** — income amounts are always typed in by hand.
+- **Static / fixed** — each period prefills the same recurring amount (your
+  salary).
+- **Estimated + manual override** — prefills the average of your last incomes;
+  always adjustable before confirming.
 
 ## Data & sync (Firebase)
 

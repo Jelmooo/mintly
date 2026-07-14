@@ -28,6 +28,7 @@ export const ICON_PATHS: Record<string, string> = {
   film: 'M4 5h16v14H4zM8 5v14M16 5v14M4 9.3h4M16 9.3h4M4 14.6h4M16 14.6h4',
   heart: 'M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.2A4 4 0 0 1 19 10c0 5.5-7 10-7 10z',
   user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 20a7 7 0 0 1 14 0',
+  gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.2 2.2M16.9 16.9l2.2 2.2M19.1 4.9l-2.2 2.2M7.1 16.9l-2.2 2.2',
 };
 
 export function Icon({ name, size = 18, stroke = 'currentColor', fill = 'none', style }: {
@@ -269,10 +270,10 @@ export function StatRow({ items }: { items: { label: string; value: ReactNode; s
   return (
     <div style={{ display: 'grid', gridTemplateColumns: `repeat(${items.length}, 1fr)`, gap: 1, background: 'var(--line-2)', borderRadius: 'var(--r)', overflow: 'hidden', border: '1px solid var(--line)' }}>
       {items.map((it, i) => (
-        <div key={i} style={{ background: 'var(--surface)', padding: '16px 16px' }}>
-          <div className="eyebrow" style={{ marginBottom: 8, fontSize: 10 }}>{it.label}</div>
-          <div className="num" style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.03em', color: it.color || 'var(--text)' }}>{it.value}</div>
-          {it.sub && <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 3 }}>{it.sub}</div>}
+        <div key={i} style={{ background: 'var(--surface)', padding: 'clamp(10px, 2.5vw, 16px)', minWidth: 0 }}>
+          <div className="eyebrow" style={{ marginBottom: 7, fontSize: 9.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.label}</div>
+          <div className="num" style={{ fontSize: 'clamp(16px, 4.5vw, 22px)', fontWeight: 600, letterSpacing: '-0.03em', color: it.color || 'var(--text)', overflowWrap: 'anywhere' }}>{it.value}</div>
+          {it.sub && <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3, lineHeight: 1.35 }}>{it.sub}</div>}
         </div>
       ))}
     </div>

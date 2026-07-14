@@ -7,7 +7,7 @@ import { Income } from './screens/Income';
 import { Expenses } from './screens/Expenses';
 import { Debt } from './screens/Debt';
 import { Goals } from './screens/Goals';
-import { Personal } from './screens/Personal';
+import { Settings } from './screens/Settings';
 import { Onboarding } from './screens/Onboarding';
 import { MoneyIn } from './screens/MoneyIn';
 import { Login } from './screens/Login';
@@ -19,7 +19,7 @@ const NAV = [
   { id: 'expenses', label: 'Expenses', icon: 'cart' },
   { id: 'debt', label: 'Debt', icon: 'card' },
   { id: 'goals', label: 'Goals', icon: 'target' },
-  { id: 'personal', label: 'Personal', icon: 'user' },
+  { id: 'settings', label: 'Settings', icon: 'gear' },
 ];
 
 function Splash({ label }: { label: string }) {
@@ -60,7 +60,7 @@ function Shell() {
     expenses: <Expenses state={state} b={b} update={update} />,
     debt: <Debt state={state} b={b} update={update} />,
     goals: <Goals state={state} b={b} update={update} />,
-    personal: <Personal state={state} b={b} update={update} onNav={go} />,
+    settings: <Settings />,
   };
 
   return (

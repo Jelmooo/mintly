@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AppState, MoneyEvent } from '../types';
-import { computeBudget, fmtEur, ordinal, uid } from '../engine';
+import { fmtEur, ordinal, periodEssentials, uid } from '../engine';
 import { Btn, Field, Icon, MoneyInput, Sheet, TextInput } from '../ui';
 
 type Upd = (u: Partial<AppState> | ((s: AppState) => AppState)) => void;
@@ -8,23 +8,42 @@ type Upd = (u: Partial<AppState> | ((s: AppState) => AppState)) => void;
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const TEAL = 'var(--teal)';
 
+/** Income prefill according to the payment-tracking setting. */
+function prefillIncome(state: AppState): { value: number | ''; hint?: string } {
+  const mode = state.settings?.tracking ?? 'fixed';
+  if (mode === 'manual') return { value: '' };
+  if (mode === 'fixed') {
+    const v = state.salary.cadence !== 'manual' ? state.salary.amount : '';
+    return { value: v, hint: v !== '' ? 'Fixed amount from your salary — change the mode in Settings.' : undefined };
+  }
+  // estimate: average of the last 3 incomes, overridable
+  const recent = state.events.filter((e) => e.kind === 'income' || e.kind === 'salary').slice(-3);
+  if (recent.length > 0) {
+    const avg = r2(recent.reduce((s, e) => s + e.amount, 0) / recent.length);
+    return { value: avg, hint: `Estimated from your last ${recent.length} income${recent.length > 1 ? 's' : ''} — adjust if it's different this time.` };
+  }
+  const v = state.salary.cadence !== 'manual' ? state.salary.amount : '';
+  return { value: v, hint: v !== '' ? 'No history yet — estimated from your salary.' : undefined };
+}
+
 /**
- * Prioritized allocation engine:
+ * Prioritized allocation engine — strictly per period:
  *  0. balance check + income input
- *  1. cover essentials (expenses + debts) and show coverage
+ *  1. cover the essentials due THIS period and show coverage
  *  2. show "what's left" and ask about saving
  *  3. optional savings allocation with goal-accuracy integrity check
  *  4. summary + apply
  */
 export function MoneyIn({ state, update, onClose }: { state: AppState; update: Upd; onClose: () => void }) {
-  const b = useMemo(() => computeBudget(state), [state]);
+  const pe = useMemo(() => periodEssentials(state), [state]);
   const scheduled = state.salary.cadence !== 'manual';
-  const essentials = r2(b.expensesTotal + b.debtTotal);
+  const essentials = r2(pe.total);
+  const prefill = useMemo(() => prefillIncome(state), [state]);
 
   const [step, setStep] = useState(0);
   const [label, setLabel] = useState(scheduled ? 'Salary' : 'Income');
   const [mainBal, setMainBal] = useState<number | ''>(state.mainBalance);
-  const [amount, setAmount] = useState<number | ''>(scheduled ? state.salary.amount : '');
+  const [amount, setAmount] = useState<number | ''>(prefill.value);
   /** Corrected goal baselines (integrity check) — goal id → amount. */
   const [baseline, setBaseline] = useState<Record<string, number | ''>>({});
   /** New deposits per goal. */
@@ -75,11 +94,6 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
     setStep(4);
   }
 
-  const essRows = [
-    ...state.expenses.map((e) => ({ name: e.name, day: e.payday, v: Number(e.amount) || 0, kind: 'expense' })),
-    ...state.debts.filter((d) => Number(d.balance) > 0).map((d) => ({ name: d.name, day: d.payday ?? 1, v: Number(d.monthly) || 0, kind: 'debt' })),
-  ].filter((r) => r.v > 0).sort((a, c) => (a.day ?? 1) - (c.day ?? 1));
-
   return (
     <Sheet open onClose={step === 4 ? onClose : () => { if (confirm('Stop without allocating?')) onClose(); }}
       title="💶 Add income"
@@ -95,7 +109,7 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
           <Field label="What is the current balance of your main account?" hint="As it is right now, before this income lands.">
             <MoneyInput value={mainBal} onChange={setMainBal} />
           </Field>
-          <Field label="New income amount">
+          <Field label="New income amount" hint={prefill.hint}>
             <MoneyInput value={amount} onChange={setAmount} />
           </Field>
           <Field label="Label (optional)">
@@ -118,30 +132,31 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
             <Icon name={covered ? 'check' : 'flag'} size={19} stroke={covered ? 'var(--accent)' : 'var(--amber)'} />
             <div style={{ fontSize: 13.5, lineHeight: 1.45 }}>
               {covered
-                ? <>Balance + income (<b className="num mono">{fmtEur(total)}</b>) covers <b>100%</b> of your upcoming bills and debt payments.</>
-                : <>Balance + income (<b className="num mono">{fmtEur(total)}</b>) is <b className="num mono">{fmtEur(essentials - total)}</b> short of your upcoming bills — everything stays on your main account this time.</>}
+                ? <>Balance + income (<b className="num mono">{fmtEur(total)}</b>) covers <b>100%</b> of the bills and debt payments due this period (next {pe.days} days).</>
+                : <>Balance + income (<b className="num mono">{fmtEur(total)}</b>) is <b className="num mono">{fmtEur(essentials - total)}</b> short of this period's bills — everything stays on your main account this time.</>}
             </div>
           </div>
 
           <div>
-            <div className="eyebrow" style={{ marginBottom: 8 }}>1 · Cover essentials first</div>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>1 · Cover this period's essentials first</div>
             <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 12 }}>
-              {essRows.map((r, i) => (
+              {pe.rows.length === 0 && <div style={{ padding: '12px', fontSize: 13, color: 'var(--text-3)' }}>Nothing due in the next {pe.days} days.</div>}
+              {pe.rows.map((r, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--line-2)', fontSize: 13 }}>
                   <Icon name={r.kind === 'debt' ? 'card' : 'cart'} size={15} stroke={r.kind === 'debt' ? 'var(--violet)' : 'var(--blue)'} />
-                  <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
-                  <span style={{ color: 'var(--text-3)', fontSize: 11.5 }}>{r.day ? ordinal(r.day) : ''}</span>
-                  <span className="num mono">{fmtEur(r.v)}</span>
+                  <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
+                  <span style={{ color: 'var(--text-3)', fontSize: 11, flex: '0 0 auto' }}>{r.inDays === 0 ? 'today' : r.inDays === 1 ? 'tomorrow' : `in ${r.inDays}d`} · {ordinal(r.payday)}</span>
+                  <span className="num mono" style={{ flex: '0 0 auto' }}>{fmtEur(r.v)}</span>
                 </div>
               ))}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontSize: 13.5 }}>
-              <span style={{ color: 'var(--text-2)' }}>Money for expenses</span>
-              <b className="num mono" style={{ color: 'var(--blue)' }}>{fmtEur(b.expensesTotal)}</b>
+              <span style={{ color: 'var(--text-2)' }}>Bills due this period</span>
+              <b className="num mono" style={{ color: 'var(--blue)' }}>{fmtEur(pe.expenses)}</b>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5, fontSize: 13.5 }}>
-              <span style={{ color: 'var(--text-2)' }}>Money for debts</span>
-              <b className="num mono" style={{ color: 'var(--violet)' }}>{fmtEur(b.debtTotal)}</b>
+              <span style={{ color: 'var(--text-2)' }}>Debt payments due this period</span>
+              <b className="num mono" style={{ color: 'var(--violet)' }}>{fmtEur(pe.debts)}</b>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--line)', fontSize: 14 }}>
               <b>Stays on your main account</b>
@@ -165,7 +180,7 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
             <div className="num" style={{ fontSize: 46, fontWeight: 600, letterSpacing: '-0.04em', color: 'var(--accent)', marginTop: 8 }}>
               {fmtEur(leftover)}
             </div>
-            <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 4 }}>private / discretionary money after all bills and debts</div>
+            <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 4 }}>yours to allocate — this period's bills and debts are covered</div>
           </div>
           <p style={{ fontSize: 14.5, textAlign: 'center', margin: '4px 0' }}>
             Would you like to put some of this leftover money toward a saving goal?

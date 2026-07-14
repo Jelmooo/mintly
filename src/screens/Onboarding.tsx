@@ -1,13 +1,14 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import type { AppState, Debt, Expense, Goal, IncomeExtra, PersonalBudget } from '../types';
-import { CADENCE, CATEGORIES, computeBudget, fmtEur, fmtMonth, INCOME_KINDS, NOW, ordinal, PCATS, salaryMonthly, uid } from '../engine';
+import type { AppState, Debt, Expense, Goal, IncomeExtra } from '../types';
+import { CADENCE, CATEGORIES, computeBudget, fmtEur, fmtMonth, INCOME_KINDS, NOW, ordinal, salaryMonthly, uid } from '../engine';
 import { Btn, CatDot, DateInput, Icon, MoneyInput, Segmented, Select, TextInput } from '../ui';
 import logoUrl from '../assets/Logo.svg';
 
 const EMPTY: AppState = {
   meta: { mainName: 'Main account', personalName: 'Personal account' },
+  settings: { tracking: 'fixed' },
   customCats: [], salary: { amount: '', cadence: 'monthly' },
-  income: [], expenses: [], personalBudgets: [], debts: [], goals: [],
+  income: [], expenses: [], debts: [], goals: [],
   mainBalance: 0, savingsBalance: 0, events: [],
 };
 
@@ -17,10 +18,9 @@ const STEPS = [
   { key: 'expenses', title: 'Fixed expenses', icon: 'cart', sub: 'Recurring bills from your main account' },
   { key: 'debts', title: 'Debts', icon: 'card', sub: 'Track what you owe — optional' },
   { key: 'goals', title: 'Savings goals', icon: 'target', sub: 'What are you saving for?' },
-  { key: 'personal', title: 'Personal money', icon: 'wallet', sub: 'Budgets for your spending account' },
   { key: 'done', title: "You're all set", icon: 'check' },
 ] as const;
-const INPUT_STEPS = 5;
+const INPUT_STEPS = 4;
 
 function nextYear() { const d = new Date(NOW); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(0, 10); }
 
@@ -34,13 +34,12 @@ export function Onboarding({ onFinish, onSkip }: {
   const [exp, setExp] = useState({ name: '', category: 'housing', amount: '' as number | '', payday: 1 });
   const [debt, setDebt] = useState({ name: '', balance: '' as number | '', monthly: '' as number | '', payday: 1 });
   const [goal, setGoal] = useState({ name: '', target: '' as number | '', saved: 0 as number | '', deadline: '' });
-  const [pers, setPers] = useState({ name: '', category: 'groceries', amount: '' as number | '' });
   const [extra, setExtra] = useState({ kind: 'travel', name: '', amount: '' as number | '', freq: 'monthly' as 'monthly' | 'yearly' });
 
   const setSalary = (k: 'amount' | 'cadence', v: unknown) => setDraft((d) => ({ ...d, salary: { ...d.salary, [k]: v } as AppState['salary'] }));
-  const pushTo = <K extends 'income' | 'expenses' | 'debts' | 'goals' | 'personalBudgets'>(key: K, item: AppState[K][number]) =>
+  const pushTo = <K extends 'income' | 'expenses' | 'debts' | 'goals'>(key: K, item: AppState[K][number]) =>
     setDraft((d) => ({ ...d, [key]: [...d[key], item] } as AppState));
-  const removeFrom = (key: 'income' | 'expenses' | 'debts' | 'goals' | 'personalBudgets', id: string) =>
+  const removeFrom = (key: 'income' | 'expenses' | 'debts' | 'goals', id: string) =>
     setDraft((d) => ({ ...d, [key]: (d[key] as { id: string }[]).filter((x) => x.id !== id) } as AppState));
 
   const next = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
@@ -196,22 +195,6 @@ export function Onboarding({ onFinish, onSkip }: {
               </div>
             )}
 
-            {meta.key === 'personal' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ fontSize: 12.5, color: 'var(--text-3)', lineHeight: 1.5 }}>These come out of the money you pay yourself. Whatever's left auto-saves into your top no-deadline goal.</div>
-                {draft.personalBudgets.map((p) => (
-                  <Row key={p.id} catKey={p.category} cats={PCATS} title={p.name} meta={(PCATS[p.category] || PCATS.other).label} amount={fmtEur(Number(p.amount) || 0)} onRemove={() => removeFrom('personalBudgets', p.id)} />
-                ))}
-                <QuickAdd canAdd={!!pers.name && !!pers.amount} onAdd={() => { if (!pers.name || !pers.amount) return; pushTo('personalBudgets', { ...pers, id: uid('p') } as PersonalBudget); setPers({ name: '', category: 'groceries', amount: '' }); }}>
-                  <TextInput value={pers.name} onChange={(v) => setPers({ ...pers, name: v })} placeholder="e.g. Going out" />
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <Select value={pers.category} onChange={(v) => setPers({ ...pers, category: v })} options={Object.entries(PCATS).map(([value, c]) => ({ value, label: c.label }))} />
-                    <MoneyInput value={pers.amount} onChange={(v) => setPers({ ...pers, amount: v })} />
-                  </div>
-                </QuickAdd>
-              </div>
-            )}
-
             {meta.key === 'done' && <Done draft={draft} />}
             </div>
           </div>
@@ -243,7 +226,7 @@ function Welcome({ onStart, onSkip }: { onStart: () => void; onSkip: () => void 
           </p>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', maxWidth: 300, marginTop: 6 }}>
-          {[['coins', 'Income'], ['cart', 'Expenses'], ['target', 'Goals'], ['wallet', 'Personal money']].map(([ic, l]) => (
+          {[['coins', 'Income'], ['cart', 'Expenses'], ['card', 'Debts'], ['target', 'Goals']].map(([ic, l]) => (
             <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, textAlign: 'left' }}>
               <Icon name={ic} size={18} stroke="var(--accent)" />
               <span style={{ fontSize: 14, fontWeight: 500 }}>{l}</span>
@@ -273,8 +256,7 @@ function Done({ draft }: { draft: AppState }) {
         { label: 'Monthly income', v: b.incomeTotal, color: 'var(--accent)' },
         { label: 'Fixed expenses', v: b.expensesTotal },
         { label: 'Debt payments', v: b.debtTotal },
-        { label: 'Into savings', v: b.savingsTotal, color: 'oklch(0.78 0.13 200)' },
-        { label: 'Personal budgets', v: b.personalBudgetsTotal },
+        { label: 'Toward dated goals', v: b.savingsTotal, color: 'oklch(0.78 0.13 200)' },
       ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18, paddingTop: 8 }}>
@@ -288,9 +270,9 @@ function Done({ draft }: { draft: AppState }) {
         </p>
       </div>
       <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: 18 }}>
-        <div className="eyebrow" style={{ marginBottom: 4 }}>{manual ? 'Bills to cover each month' : 'Paid to your personal account'}</div>
-        <div className="num" style={{ fontSize: 36, fontWeight: 600, letterSpacing: '-0.03em', color: manual ? 'var(--text)' : b.paidToPersonal < 0 ? 'var(--rose)' : 'var(--accent)' }}>
-          {fmtEur(manual ? b.expensesTotal + b.debtTotal : b.paidToPersonal)}
+        <div className="eyebrow" style={{ marginBottom: 4 }}>{manual ? 'Bills to cover each month' : 'Left over to allocate each month'}</div>
+        <div className="num" style={{ fontSize: 36, fontWeight: 600, letterSpacing: '-0.03em', color: manual ? 'var(--text)' : b.leftover < 0 ? 'var(--rose)' : 'var(--accent)' }}>
+          {fmtEur(manual ? b.expensesTotal + b.debtTotal : b.leftover)}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginTop: 16 }}>
           {rows.map((r) => (
@@ -315,7 +297,7 @@ function QuickAdd({ children, onAdd, canAdd }: { children: ReactNode; onAdd: () 
 }
 
 function Row({ icon, color, catKey, cats, title, meta, amount, onRemove }: {
-  icon?: string; color?: string; catKey?: string; cats?: typeof PCATS; title: string; meta: string; amount: string; onRemove: () => void;
+  icon?: string; color?: string; catKey?: string; cats?: typeof CATEGORIES; title: string; meta: string; amount: string; onRemove: () => void;
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 12px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, marginBottom: 8 }}>

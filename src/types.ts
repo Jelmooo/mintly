@@ -37,11 +37,11 @@ export interface Expense {
   payday: number;
 }
 
-export interface PersonalBudget {
-  id: string;
-  name: string;
-  category: string;
-  amount: number | '';
+/** How income amounts are registered in the Add-income flow. */
+export type TrackingMode = 'manual' | 'fixed' | 'estimate';
+
+export interface AppSettings {
+  tracking: TrackingMode;
 }
 
 export interface Debt {
@@ -79,11 +79,11 @@ export interface MoneyEvent {
 
 export interface AppState {
   meta: Meta;
+  settings: AppSettings;
   customCats: CustomCat[];
   salary: Salary;
   income: IncomeExtra[];
   expenses: Expense[];
-  personalBudgets: PersonalBudget[];
   debts: Debt[];
   goals: Goal[];
   /** Live balance on the main account. */

@@ -67,8 +67,12 @@ export function Expenses({ state, b, update }: { state: AppState; b: Budget; upd
 
       <Card>
         <h3 style={{ fontSize: 16, marginBottom: 4 }}>Payment calendar</h3>
-        <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginBottom: 18 }}>When each expense leaves your account through the month.</div>
-        <PaydayTimeline expenses={state.expenses} cats={cats} />
+        <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginBottom: 18 }}>When each expense leaves your account through the month. Swipe to scroll.</div>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 4 }}>
+          <div style={{ minWidth: 560 }}>
+            <PaydayTimeline expenses={state.expenses} cats={cats} />
+          </div>
+        </div>
       </Card>
 
       <ExpenseSheet item={edit} cats={cats} onAddCat={addCat} onClose={() => setEdit(null)} onSave={save} />

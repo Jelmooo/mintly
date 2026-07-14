@@ -15,16 +15,6 @@ export const CATEGORIES: Record<string, CatDef> = {
   other:         { label: 'Other',            color: 'var(--text-3)',        hue: 0,   icon: 'dot' },
 };
 
-export const PCATS: Record<string, CatDef> = {
-  groceries: { label: 'Groceries',     color: 'var(--amber)',         icon: 'cart' },
-  dining:    { label: 'Going out',     color: 'oklch(0.78 0.13 30)',  icon: 'cup' },
-  fun:       { label: 'Fun & hobbies', color: 'var(--violet)',        icon: 'film' },
-  shopping:  { label: 'Shopping',      color: 'oklch(0.78 0.13 200)', icon: 'bag' },
-  transport: { label: 'Transport',     color: 'oklch(0.78 0.12 130)', icon: 'bus' },
-  health:    { label: 'Health',        color: 'oklch(0.78 0.12 350)', icon: 'heart' },
-  other:     { label: 'Other',         color: 'var(--text-3)',        icon: 'dot' },
-};
-
 export const INCOME_KINDS: Record<string, { label: string }> = {
   salary:   { label: 'Salary' },
   travel:   { label: 'Travel allowance' },
@@ -118,20 +108,16 @@ export interface Budget {
   datedFunded: number;
   datedRequired: number;
   savingsTotal: number;
-  paidToPersonal: number;
-  personalBudgets: AppState['personalBudgets'];
-  personalBudgetsTotal: number;
-  budByCat: Record<string, number>;
-  personalFree: number;
-  sweep: number;
-  topOpen: FundedGoal | null;
-  unbudgeted: number;
+  /** What remains each month after expenses, debts and dated goals — yours to allocate. */
+  leftover: number;
   overAllocated: boolean;
   goalsUnderfunded: boolean;
-  personalOver: boolean;
 }
 
-// ---------- the allocation engine (port exactly) ----------
+// ---------- the allocation engine ----------
+// income − expenses − debts − dated goals (by priority) = leftover.
+// No rigid category budgets: leftover is allocated by the user when money
+// arrives (Add income), including deposits into open-ended goals.
 export function computeBudget(state: AppState): Budget {
   const salM = salaryMonthly(state.salary);
   const extras = state.income.map((x) => ({ ...x, monthly: extraMonthly(x) }));
@@ -170,24 +156,11 @@ export function computeBudget(state: AppState): Budget {
   const datedFunded = dated.reduce((s, g) => s + g.funded, 0);
   const datedRequired = dated.reduce((s, g) => s + g.required, 0);
 
-  const paidToPersonal = afterFixed - datedFunded;
-
-  const personalBudgets = state.personalBudgets || [];
-  const personalBudgetsTotal = personalBudgets.reduce((s, p) => s + n(p.amount), 0);
-  const budByCat: Record<string, number> = {};
-  personalBudgets.forEach((p) => { budByCat[p.category] = (budByCat[p.category] || 0) + n(p.amount); });
-  const personalFree = paidToPersonal - personalBudgetsTotal;
-
-  const topOpen = goals.find((g) => !g.hasDeadline) || null;
-  const sweep = topOpen ? Math.max(0, personalFree) : 0;
-  if (topOpen) { topOpen.funded = sweep; topOpen.onTrack = true; }
-  const unbudgeted = personalFree - sweep;
-
-  const savingsTotal = datedFunded + sweep;
+  const leftover = afterFixed - datedFunded;
+  const savingsTotal = datedFunded;
 
   const overAllocated = expensesTotal + debtTotal > incomeTotal;
   const goalsUnderfunded = datedRequired > Math.max(0, afterFixed) + 0.5;
-  const personalOver = personalFree < -0.5;
 
   return {
     salM, extrasM, incomeTotal, extras,
@@ -195,8 +168,78 @@ export function computeBudget(state: AppState): Budget {
     debtTotal, cats,
     afterFixed,
     goals, dated, datedFunded, datedRequired, savingsTotal,
-    paidToPersonal,
-    personalBudgets, personalBudgetsTotal, budByCat, personalFree, sweep, topOpen, unbudgeted,
-    overAllocated, goalsUnderfunded, personalOver,
+    leftover,
+    overAllocated, goalsUnderfunded,
   };
+}
+
+// ---------- period-based calculations ----------
+// Everything below reasons about the CURRENT pay period only (spec: "€600 in,
+// €400 of bills due this period → €200 left"), never about grand totals.
+
+function daysInMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+}
+
+/** Length of one pay period in days, starting at `from`. */
+export function periodWindowDays(c: Cadence, from: Date = new Date()): number {
+  if (c === 'weekly') return 7;
+  if (c === 'fourweek') return 28;
+  // monthly & manual: until the same day next month
+  const next = new Date(from.getFullYear(), from.getMonth() + 1, from.getDate());
+  return Math.max(28, Math.round((next.getTime() - from.getTime()) / 86400000));
+}
+
+/** Days until a monthly bill (day-of-month, clamped to month length) is next due. */
+export function nextDueInDays(payday: number, from: Date = new Date(), horizon = 62): number {
+  for (let i = 0; i < horizon; i++) {
+    const d = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
+    if (d.getDate() === Math.min(payday, daysInMonth(d))) return i;
+  }
+  return horizon;
+}
+
+export interface PeriodBill {
+  name: string;
+  payday: number;
+  v: number;
+  kind: 'expense' | 'debt';
+  inDays: number;
+}
+export interface PeriodEssentials {
+  days: number;
+  rows: PeriodBill[];
+  expenses: number;
+  debts: number;
+  total: number;
+}
+
+/** The bills and debt payments that actually fall due within the current period. */
+export function periodEssentials(state: AppState, from: Date = new Date()): PeriodEssentials {
+  const days = periodWindowDays(state.salary.cadence, from);
+  const rows: PeriodBill[] = [];
+  for (const e of state.expenses) {
+    const v = n(e.amount);
+    if (v <= 0) continue;
+    const inDays = nextDueInDays(e.payday ?? 1, from);
+    if (inDays < days) rows.push({ name: e.name, payday: e.payday ?? 1, v, kind: 'expense', inDays });
+  }
+  for (const d of state.debts) {
+    const v = n(d.monthly);
+    if (v <= 0 || n(d.balance) <= 0) continue;
+    const inDays = nextDueInDays(d.payday ?? 1, from);
+    if (inDays < days) rows.push({ name: d.name, payday: d.payday ?? 1, v, kind: 'debt', inDays });
+  }
+  rows.sort((a, b) => a.inDays - b.inDays);
+  const expenses = rows.filter((r) => r.kind === 'expense').reduce((s, r) => s + r.v, 0);
+  const debts = rows.filter((r) => r.kind === 'debt').reduce((s, r) => s + r.v, 0);
+  return { days, rows, expenses, debts, total: expenses + debts };
+}
+
+/** Income expected in one period (salary per pay + monthly extras averaged). */
+export function periodIncome(state: AppState): number {
+  const per = CADENCE[state.salary.cadence].perMonth;
+  if (per <= 0) return 0; // manual — unknown until it arrives
+  const extrasM = state.income.reduce((s, x) => s + extraMonthly(x), 0);
+  return n(state.salary.amount) + extrasM / per;
 }

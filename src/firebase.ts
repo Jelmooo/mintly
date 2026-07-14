@@ -8,9 +8,14 @@ import {
 } from 'firebase/firestore';
 import { firebaseConfig } from './firebase-config';
 
+/** Dev escape hatch: set localStorage "mintly.local" to force local-only mode. */
+function forcedLocal(): boolean {
+  try { return !!localStorage.getItem('mintly.local'); } catch { return false; }
+}
+
 /** True once a real config has been pasted into firebase-config.ts. */
 export const firebaseEnabled =
-  !!firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('PASTE');
+  !!firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('PASTE') && !forcedLocal();
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;

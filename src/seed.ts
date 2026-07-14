@@ -6,11 +6,11 @@ import type { AppState } from './types';
  */
 export const seedState: AppState = {
   meta: { mainName: 'Main account', personalName: 'Personal account' },
+  settings: { tracking: 'fixed' },
   customCats: [],
   salary: { amount: '', cadence: 'monthly' },
   income: [],
   expenses: [],
-  personalBudgets: [],
   debts: [],
   goals: [],
   mainBalance: 0,
