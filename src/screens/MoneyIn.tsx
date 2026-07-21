@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AppState, MoneyEvent } from '../types';
-import { fmtEur, ordinal, periodEssentials, uid } from '../engine';
+import { CADENCE, fmtEur, ordinal, periodEssentials, uid } from '../engine';
 import { Btn, DateInput, Field, Icon, MoneyInput, Sheet, TextInput } from '../ui';
 
 type Upd = (u: Partial<AppState> | ((s: AppState) => AppState)) => void;
@@ -59,8 +59,11 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
   const [baseline, setBaseline] = useState<Record<string, number | ''>>({});
   /** New deposits per goal. */
   const [dep, setDep] = useState<Record<string, number | ''>>({});
+  /** Corrected pot baselines + new deposits per pot. */
+  const [potBase, setPotBase] = useState<Record<string, number | ''>>({});
+  const [potDep, setPotDep] = useState<Record<string, number | ''>>({});
   const [result, setResult] = useState<null | {
-    keepOnMain: number; toSavings: { name: string; v: number }[]; priv: number; covered: boolean;
+    keepOnMain: number; toSavings: { name: string; v: number; icon: string }[]; priv: number; covered: boolean;
   }>(null);
 
   // The current balance already includes this income — it IS the total to split.
@@ -70,17 +73,40 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
   const openGoals = [...state.goals]
     .sort((a, c) => a.priority - c.priority)
     .filter((g) => Number(g.target) > 0);
+  const pots = state.pots || [];
+  const canSetAside = openGoals.length > 0 || pots.length > 0;
   const depSum = r2(openGoals.reduce((s, g) => s + (Number(dep[g.id]) || 0), 0));
-  const remaining = r2(leftover - depSum);
+  const potDepSum = r2(pots.reduce((s, p) => s + (Number(potDep[p.id]) || 0), 0));
+  const remaining = r2(leftover - depSum - potDepSum);
 
   const goalBaseline = (id: string) => {
     const g = state.goals.find((x) => x.id === id)!;
     return baseline[id] !== undefined && baseline[id] !== '' ? Number(baseline[id]) : Number(g.saved) || 0;
   };
+  const potBaseline = (id: string) => {
+    const p = pots.find((x) => x.id === id)!;
+    return potBase[id] !== undefined && potBase[id] !== '' ? Number(potBase[id]) : Number(p.balance) || 0;
+  };
+
+  /** Suggest topping up each pot by its per-period share, greedily within leftover. */
+  function suggestPots() {
+    const perMonth = CADENCE[state.salary.cadence].perMonth;
+    let leftBudget = leftover;
+    const out: Record<string, number> = {};
+    for (const p of pots) {
+      const share = perMonth > 0 ? r2((Number(p.monthly) || 0) / perMonth) : Number(p.monthly) || 0;
+      const give = Math.min(share, leftBudget);
+      if (give > 0.004) { out[p.id] = r2(give); leftBudget = r2(leftBudget - give); }
+    }
+    setPotDep(out);
+  }
 
   function apply(withSavings: boolean) {
     const deposits = openGoals
       .map((g) => ({ id: g.id, name: g.name, v: withSavings ? r2(Number(dep[g.id]) || 0) : 0 }))
+      .filter((d) => d.v > 0);
+    const potDeposits = pots
+      .map((p) => ({ id: p.id, name: p.name, v: withSavings ? r2(Number(potDep[p.id]) || 0) : 0 }))
       .filter((d) => d.v > 0);
     const goals = state.goals.map((g) => {
       const base = goalBaseline(g.id);
@@ -88,9 +114,15 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
       const next = r2(base + d);
       return next !== (Number(g.saved) || 0) ? { ...g, saved: next } : g;
     });
-    const toSavingsSum = r2(deposits.reduce((s, d) => s + d.v, 0));
+    const nextPots = state.pots.map((p) => {
+      const base = potBaseline(p.id);
+      const d = potDeposits.find((x) => x.id === p.id)?.v ?? 0;
+      const next = r2(base + d);
+      return next !== (Number(p.balance) || 0) ? { ...p, balance: next } : p;
+    });
+    const setAsideSum = r2(deposits.reduce((s, d) => s + d.v, 0) + potDeposits.reduce((s, d) => s + d.v, 0));
     const keepOnMain = covered ? essentials : total;
-    const priv = covered ? r2(leftover - toSavingsSum) : 0;
+    const priv = covered ? r2(leftover - setAsideSum) : 0;
 
     const event: MoneyEvent = {
       id: uid('ev'), date: new Date(payDate + 'T12:00:00').toISOString(), kind: 'income', label,
@@ -98,11 +130,18 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
       lines: [
         { key: 'essentials', name: 'Kept for bills & debts', amount: keepOnMain },
         ...deposits.map((d) => ({ key: 'goal-' + d.id, name: d.name, amount: d.v })),
+        ...potDeposits.map((d) => ({ key: 'pot-' + d.id, name: d.name, amount: d.v })),
         ...(priv > 0 ? [{ key: 'private', name: 'Private money', amount: priv }] : []),
       ],
     };
-    update((s) => ({ ...s, goals, mainBalance: keepOnMain, events: [...s.events, event] }));
-    setResult({ keepOnMain, toSavings: deposits.map((d) => ({ name: d.name, v: d.v })), priv, covered });
+    update((s) => ({ ...s, goals, pots: nextPots, mainBalance: keepOnMain, events: [...s.events, event] }));
+    setResult({
+      keepOnMain, priv, covered,
+      toSavings: [
+        ...potDeposits.map((d) => ({ name: 'Into pot: ' + d.name, v: d.v, icon: 'shield' })),
+        ...deposits.map((d) => ({ name: 'To goal: ' + d.name, v: d.v, icon: 'target' })),
+      ],
+    });
     setStep(4);
   }
 
@@ -198,19 +237,19 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
             <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 4 }}>yours to allocate — this period's bills and debts are covered</div>
           </div>
           <p style={{ fontSize: 14.5, textAlign: 'center', margin: '4px 0' }}>
-            Would you like to put some of this leftover money toward a saving goal?
+            Would you like to set some of this aside — into your pots or saving goals?
           </p>
           <div style={{ display: 'flex', gap: 10 }}>
             <Btn variant="ghost" style={{ flex: 1, justifyContent: 'center', padding: 12 }} onClick={() => apply(false)}>
               No — keep it private
             </Btn>
-            <Btn variant="primary" icon="target" style={{ flex: 1, justifyContent: 'center', padding: 12 }}
-              disabled={openGoals.length === 0} onClick={() => setStep(3)}>
-              Yes, toward a goal
+            <Btn variant="primary" icon="shield" style={{ flex: 1, justifyContent: 'center', padding: 12 }}
+              disabled={!canSetAside} onClick={() => { suggestPots(); setStep(3); }}>
+              Yes, set aside
             </Btn>
           </div>
-          {openGoals.length === 0 && (
-            <p style={{ fontSize: 12, color: 'var(--text-3)', textAlign: 'center', margin: 0 }}>No saving goals yet — add one on the Goals tab.</p>
+          {!canSetAside && (
+            <p style={{ fontSize: 12, color: 'var(--text-3)', textAlign: 'center', margin: 0 }}>No pots or goals yet — add one on the Pots or Goals tab.</p>
           )}
         </div>
       )}
@@ -222,8 +261,8 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
             background: 'color-mix(in oklch, var(--amber) 10%, transparent)',
             border: '1px solid color-mix(in oklch, var(--amber) 30%, transparent)',
           }}>
-            <b>Quick check:</b> is the current amount in each goal still accurate — or did you
-            take money from it for something else? Correct the <i>current</i> field first, then
+            <b>Quick check:</b> is the current amount still accurate — or did you take money
+            from a pot or goal for something else? Correct the <i>current</i> field first, then
             enter your deposit.
           </div>
 
@@ -238,7 +277,35 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
               : <>Left to allocate: <b className="num mono">{fmtEur(remaining)}</b> of {fmtEur(leftover)}</>}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 320, overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 340, overflowY: 'auto' }}>
+            {pots.length > 0 && <div className="eyebrow" style={{ fontSize: 9.5 }}>Pots (buffers)</div>}
+            {pots.map((p) => {
+              const base = potBaseline(p.id);
+              const cap = Number(p.target) || 0;
+              return (
+                <div key={p.id} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: '10px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <Icon name={p.icon || 'shield'} size={15} stroke="var(--violet)" />
+                    <span style={{ fontSize: 13.5, fontWeight: 600, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
+                    <span className="num mono" style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{fmtEur(base)}{cap > 0 ? ' / ' + fmtEur(cap) : ''}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <div className="eyebrow" style={{ fontSize: 9, marginBottom: 4 }}>Current (correct if needed)</div>
+                      <MoneyInput value={potBase[p.id] ?? (Number(p.balance) || 0)}
+                        onChange={(v) => setPotBase((s) => ({ ...s, [p.id]: v }))} />
+                    </div>
+                    <div>
+                      <div className="eyebrow" style={{ fontSize: 9, marginBottom: 4 }}>Deposit now</div>
+                      <MoneyInput value={potDep[p.id] ?? ''}
+                        onChange={(v) => setPotDep((s) => ({ ...s, [p.id]: v }))} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {openGoals.length > 0 && <div className="eyebrow" style={{ fontSize: 9.5, marginTop: pots.length > 0 ? 4 : 0 }}>Saving goals</div>}
             {openGoals.map((g) => {
               const base = goalBaseline(g.id);
               const target = Number(g.target) || 0;
@@ -282,13 +349,13 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <TransferRow icon="wallet" label="Keep on main account (bills & debts)" v={result.keepOnMain} dashed />
-            {result.toSavings.map((s) => <TransferRow key={s.name} icon="target" label={`To savings: ${s.name}`} v={s.v} />)}
+            {result.toSavings.map((s) => <TransferRow key={s.name} icon={s.icon} label={s.name} v={s.v} />)}
             {result.priv > 0 && <TransferRow icon="user" label="Private money — pay yourself" v={result.priv} />}
           </div>
           <p style={{ fontSize: 12.5, color: 'var(--text-3)', margin: 0 }}>
             {result.covered
-              ? 'Your goals and balance are updated. 💪'
-              : 'Not enough for all bills this time — nothing was moved to savings or private money.'}
+              ? 'Your pots, goals and balance are updated. 💪'
+              : 'Not enough for all bills this time — nothing was moved to pots, savings or private money.'}
           </p>
         </div>
       )}

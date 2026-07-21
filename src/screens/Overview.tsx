@@ -1,6 +1,6 @@
 import type { AppState } from '../types';
 import { type Budget, CADENCE, fmtEur, ordinal, periodEssentials, periodIncome, type PeriodEssentials } from '../engine';
-import { Card, Icon, Pill, Ring, StatRow } from '../ui';
+import { Bar, Card, Icon, Pill, Ring, StatRow } from '../ui';
 
 const TEAL = 'oklch(0.78 0.13 200)';
 const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -157,6 +157,39 @@ function LastEventCard({ state }: { state: AppState }) {
   );
 }
 
+function PotsCard({ state, onNav }: { state: AppState; onNav: (id: string) => void }) {
+  const pots = state.pots || [];
+  return (
+    <Card>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h3 style={{ fontSize: 16 }}>Pots</h3>
+        <button onClick={() => onNav('pots')} style={{ background: 'none', border: 'none', color: 'var(--text-2)', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4 }}>Manage <Icon name="arrow" size={13} /></button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {pots.map((p) => {
+          const bal = Number(p.balance) || 0;
+          const target = Number(p.target) || 0;
+          const pct = target > 0 ? Math.min(100, (bal / target) * 100) : 0;
+          return (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 9, background: 'color-mix(in oklch, var(--violet) 16%, transparent)', color: 'var(--violet)', display: 'grid', placeItems: 'center', flex: '0 0 auto' }}><Icon name={p.icon || 'shield'} size={16} /></div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
+                  <span className="num mono" style={{ fontSize: 13.5, color: 'var(--violet)', flex: '0 0 auto' }}>{fmtEur(bal)}</span>
+                </div>
+                {target > 0
+                  ? <div style={{ marginTop: 5 }}><Bar pct={pct} color="var(--violet)" h={6} /></div>
+                  : Number(p.monthly) > 0 && <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 3 }}>{fmtEur(Number(p.monthly))}/mo set aside</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 function AddIncomeButton({ onMoneyIn, big }: { onMoneyIn: () => void; big?: boolean }) {
   return (
     <button onClick={onMoneyIn} style={{
@@ -201,6 +234,12 @@ function ManualOverview({ state, b, onNav, onMoneyIn }: OverviewProps) {
         <DueThisPeriodCard pe={pe} />
         <SavingsPlanCard b={b} onNav={onNav} />
       </div>
+
+      {(state.pots || []).length > 0 && (
+        <div className="grid2 ov">
+          <PotsCard state={state} onNav={onNav} />
+        </div>
+      )}
 
       <LastEventCard state={state} />
     </div>
@@ -265,9 +304,13 @@ export function Overview(props: OverviewProps) {
       </div>
 
       <div className="grid2 ov">
-        <SpendBreakdownCard b={b} />
         <SavingsPlanCard b={b} onNav={onNav} />
+        {(state.pots || []).length > 0
+          ? <PotsCard state={state} onNav={onNav} />
+          : <SpendBreakdownCard b={b} />}
       </div>
+
+      {(state.pots || []).length > 0 && <SpendBreakdownCard b={b} />}
 
       <LastEventCard state={state} />
     </div>

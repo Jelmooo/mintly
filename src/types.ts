@@ -62,6 +62,23 @@ export interface Debt {
   payday?: number;
 }
 
+/**
+ * A "potje" — a sinking fund / buffer for irregular costs (car repair, broken
+ * appliance, dentist…). Unlike a goal you keep it topped up and withdraw from
+ * it repeatedly; it has no completion.
+ */
+export interface Pot {
+  id: string;
+  name: string;
+  /** Current balance set aside. */
+  balance: number | '';
+  /** Suggested set-aside per month (prefills the Add-income top-up). 0 = none. */
+  monthly: number | '';
+  /** Optional cap you aim to keep in the pot. */
+  target?: number | '';
+  icon?: string;
+}
+
 export interface Goal {
   id: string;
   name: string;
@@ -92,6 +109,7 @@ export interface AppState {
   expenses: Expense[];
   debts: Debt[];
   goals: Goal[];
+  pots: Pot[];
   /** Live balance on the main account. */
   mainBalance: number;
   /** Free savings (not tied to a goal). */

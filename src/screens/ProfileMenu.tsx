@@ -46,6 +46,7 @@ export function ProfileMenu({ onClose, onNav }: { onClose: () => void; onNav: (i
         <MenuItem icon="cart" label="Fixed expenses" onClick={() => goTo('expenses')} />
         <MenuItem icon="card" label="Debts" onClick={() => goTo('debt')} />
         <MenuItem icon="target" label="Savings goals" onClick={() => goTo('goals')} />
+        <MenuItem icon="shield" label="Pots" onClick={() => goTo('pots')} />
 
         <div className="menu-divider" />
         <MenuItem icon="gear" label="Payment tracking" onClick={() => goTo('settings')} />

@@ -13,6 +13,7 @@ export const seedState: AppState = {
   expenses: [],
   debts: [],
   goals: [],
+  pots: [],
   mainBalance: 0,
   savingsBalance: 0,
   events: [],

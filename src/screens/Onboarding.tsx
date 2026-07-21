@@ -8,7 +8,7 @@ const EMPTY: AppState = {
   meta: { mainName: 'Main account', personalName: 'Personal account' },
   settings: { tracking: 'fixed' },
   customCats: [], salary: { amount: '', cadence: 'monthly' },
-  income: [], expenses: [], debts: [], goals: [],
+  income: [], expenses: [], debts: [], goals: [], pots: [],
   mainBalance: 0, savingsBalance: 0, events: [],
 };
 

@@ -126,6 +126,10 @@ export interface Budget {
   savingsTotal: number;
   /** What remains each month after expenses, debts and dated goals — yours to allocate. */
   leftover: number;
+  /** Sum of all pot balances (money already set aside in buffers). */
+  potsTotal: number;
+  /** Sum of suggested monthly pot contributions. */
+  potsMonthly: number;
   overAllocated: boolean;
   goalsUnderfunded: boolean;
 }
@@ -175,6 +179,11 @@ export function computeBudget(state: AppState): Budget {
   const leftover = afterFixed - datedFunded;
   const savingsTotal = datedFunded;
 
+  // Pots (potjes) are buffers you fund from leftover — they don't reduce the
+  // headline leftover, only suggest where some of it could go.
+  const potsTotal = (state.pots || []).reduce((s, p) => s + n(p.balance), 0);
+  const potsMonthly = (state.pots || []).reduce((s, p) => s + n(p.monthly), 0);
+
   const overAllocated = expensesTotal + debtTotal > incomeTotal;
   const goalsUnderfunded = datedRequired > Math.max(0, afterFixed) + 0.5;
 
@@ -184,7 +193,7 @@ export function computeBudget(state: AppState): Budget {
     debtTotal, cats,
     afterFixed,
     goals, dated, datedFunded, datedRequired, savingsTotal,
-    leftover,
+    leftover, potsTotal, potsMonthly,
     overAllocated, goalsUnderfunded,
   };
 }

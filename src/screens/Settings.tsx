@@ -29,6 +29,7 @@ const EDIT_LINKS: { id: string; label: string; sub: string; icon: string }[] = [
   { id: 'expenses', label: 'Fixed expenses', sub: 'Recurring bills and their paydate', icon: 'cart' },
   { id: 'debt', label: 'Debts', sub: 'Balances and monthly payments', icon: 'card' },
   { id: 'goals', label: 'Savings goals', sub: 'Targets and deadlines', icon: 'target' },
+  { id: 'pots', label: 'Pots', sub: 'Buffers for irregular costs', icon: 'shield' },
 ];
 
 export function Settings({ onNav }: { onNav: (id: string) => void }) {

@@ -34,6 +34,12 @@ Open http://localhost:5173. State persists to `localStorage`
   auto-calculated. Paid-down progress, paydate + projected clear date.
 - **Goals** — priority reorder, optional deadlines; dated goals get a planned
   monthly amount, open-ended goals are funded from leftover.
+- **Pots** (potjes) — sinking-fund buffers for irregular costs (car repair,
+  broken appliance…). Each has a balance, an optional suggested monthly
+  set-aside, and an optional target cap. **Deposit** to build it up,
+  **withdraw** when something breaks. Pots don't shrink your leftover — the
+  Add-income flow just pre-fills each pot's per-period top-up as a suggestion,
+  which you can adjust.
 
 The avatar (top right) opens an **account menu**: quick links to edit anything
 from onboarding (income, expenses, debts, goals), the **Settings** screen
