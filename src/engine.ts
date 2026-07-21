@@ -263,6 +263,40 @@ export function periodEssentials(state: AppState, from: Date = new Date()): Peri
   return { days, rows, expenses, debts, total: expenses + debts };
 }
 
+/** Average length of a month, for smoothing bill reserves toward due dates. */
+export const MONTH_DAYS = 30.44;
+
+export interface ReserveRow {
+  name: string; payday: number; amount: number; inDays: number; accrued: number; kind: 'expense' | 'debt';
+}
+export interface BillReserve {
+  rows: ReserveRow[]; expenses: number; debts: number; total: number;
+}
+
+/**
+ * How much you should already have set aside RIGHT NOW for each upcoming bill /
+ * debt, spread smoothly toward its due date so nothing has to land as a lump.
+ *   accrued = amount × (monthDays − daysUntilDue) / monthDays
+ * e.g. a €500 bill due in 21 days → ~€155 now, growing to €500 by the due date,
+ * then resetting once it's paid.
+ */
+export function billReserve(state: AppState, from: Date = new Date()): BillReserve {
+  const rr = (v: number) => Math.round(v * 100) / 100;
+  const rows: ReserveRow[] = [];
+  const add = (name: string, payday: number, amount: number, kind: 'expense' | 'debt') => {
+    if (amount <= 0) return;
+    const inDays = nextDueInDays(payday, from);
+    const accrued = rr((amount * Math.max(0, MONTH_DAYS - Math.min(inDays, MONTH_DAYS))) / MONTH_DAYS);
+    rows.push({ name, payday, amount: rr(amount), inDays, accrued, kind });
+  };
+  for (const e of state.expenses) add(e.name, e.payday ?? 1, expenseMonthly(e), 'expense');
+  for (const d of state.debts) if (debtRemaining(d) > 0) add(d.name, d.payday ?? 1, n(d.monthly), 'debt');
+  rows.sort((a, b) => a.inDays - b.inDays);
+  const expenses = rr(rows.filter((r) => r.kind === 'expense').reduce((s, r) => s + r.accrued, 0));
+  const debts = rr(rows.filter((r) => r.kind === 'debt').reduce((s, r) => s + r.accrued, 0));
+  return { rows, expenses, debts, total: rr(expenses + debts) };
+}
+
 /** Income expected in one period (salary per pay + monthly extras averaged). */
 export function periodIncome(state: AppState): number {
   const per = CADENCE[state.salary.cadence].perMonth;

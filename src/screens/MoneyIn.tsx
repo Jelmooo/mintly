@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AppState, MoneyEvent } from '../types';
-import { CADENCE, fmtEur, ordinal, periodEssentials, uid } from '../engine';
+import { billReserve, CADENCE, computeBudget, fmtEur, ordinal, uid } from '../engine';
 import { Btn, DateInput, Field, Icon, MoneyInput, Sheet, TextInput } from '../ui';
 
 type Upd = (u: Partial<AppState> | ((s: AppState) => AppState)) => void;
@@ -49,9 +49,11 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
   const [label, setLabel] = useState(scheduled ? 'Salary' : 'Income');
   // Payslip date — defaults to today, editable if you enter it a few days late.
   const [payDate, setPayDate] = useState(todayISO());
-  // Bills "due this period" are measured from the payslip date, not from today.
-  const pe = useMemo(() => periodEssentials(state, new Date(payDate + 'T12:00:00')), [state, payDate]);
-  const essentials = r2(pe.total);
+  // Smoothed reserve: how much to have set aside NOW for upcoming bills/debts,
+  // spread toward each due date (measured from the payslip date).
+  const br = useMemo(() => billReserve(state, new Date(payDate + 'T12:00:00')), [state, payDate]);
+  const b = useMemo(() => computeBudget(state), [state]);
+  const essentials = r2(br.total);
   // Current balance = what the bank shows now, i.e. old balance + this income.
   const [mainBal, setMainBal] = useState<number | ''>(r2((state.mainBalance || 0) + expectedIncome) || '');
   const [amount, setAmount] = useState<number | ''>(prefill.value);
@@ -70,9 +72,7 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
   const total = r2(Number(mainBal) || 0);
   const covered = total >= essentials - 0.005;
   const leftover = r2(Math.max(0, total - essentials));
-  const openGoals = [...state.goals]
-    .sort((a, c) => a.priority - c.priority)
-    .filter((g) => Number(g.target) > 0);
+  const openGoals = b.goals.filter((g) => Number(g.target) > 0);
   const pots = state.pots || [];
   const canSetAside = openGoals.length > 0 || pots.length > 0;
   const depSum = r2(openGoals.reduce((s, g) => s + (Number(dep[g.id]) || 0), 0));
@@ -88,17 +88,27 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
     return potBase[id] !== undefined && potBase[id] !== '' ? Number(potBase[id]) : Number(p.balance) || 0;
   };
 
-  /** Suggest topping up each pot by its per-period share, greedily within leftover. */
-  function suggestPots() {
+  /**
+   * Suggest setting aside each period's smooth share, greedily within leftover:
+   * dated goals get required/period, pots get their monthly/period.
+   */
+  function suggestSetAside() {
     const perMonth = CADENCE[state.salary.cadence].perMonth;
+    const share = (monthly: number) => (perMonth > 0 ? r2(monthly / perMonth) : r2(monthly));
     let leftBudget = leftover;
-    const out: Record<string, number> = {};
+    const potOut: Record<string, number> = {};
+    const goalOut: Record<string, number> = {};
     for (const p of pots) {
-      const share = perMonth > 0 ? r2((Number(p.monthly) || 0) / perMonth) : Number(p.monthly) || 0;
-      const give = Math.min(share, leftBudget);
-      if (give > 0.004) { out[p.id] = r2(give); leftBudget = r2(leftBudget - give); }
+      const give = Math.min(share(Number(p.monthly) || 0), leftBudget);
+      if (give > 0.004) { potOut[p.id] = r2(give); leftBudget = r2(leftBudget - give); }
     }
-    setPotDep(out);
+    for (const g of openGoals) {
+      if (!g.hasDeadline) continue; // open-ended goals aren't time-bound — you choose
+      const give = Math.min(share(g.required), leftBudget);
+      if (give > 0.004) { goalOut[g.id] = r2(give); leftBudget = r2(leftBudget - give); }
+    }
+    setPotDep(potOut);
+    setDep(goalOut);
   }
 
   function apply(withSavings: boolean) {
@@ -186,34 +196,29 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
             <Icon name={covered ? 'check' : 'flag'} size={19} stroke={covered ? 'var(--accent)' : 'var(--amber)'} />
             <div style={{ fontSize: 13.5, lineHeight: 1.45 }}>
               {covered
-                ? <>Your balance (<b className="num mono">{fmtEur(total)}</b>) covers <b>100%</b> of the bills and debt payments due this period (next {pe.days} days).</>
-                : <>Your balance (<b className="num mono">{fmtEur(total)}</b>) is <b className="num mono">{fmtEur(essentials - total)}</b> short of this period's bills — everything stays on your main account this time.</>}
+                ? <>Your balance (<b className="num mono">{fmtEur(total)}</b>) covers everything you should have set aside so far for upcoming bills — spread smoothly toward each due date.</>
+                : <>Your balance (<b className="num mono">{fmtEur(total)}</b>) is <b className="num mono">{fmtEur(essentials - total)}</b> short of the bill reserve — everything stays on your main account this time.</>}
             </div>
           </div>
 
           <div>
-            <div className="eyebrow" style={{ marginBottom: 8 }}>1 · Cover this period's essentials first</div>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>1 · Set aside for upcoming bills</div>
             <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 12 }}>
-              {pe.rows.length === 0 && <div style={{ padding: '12px', fontSize: 13, color: 'var(--text-3)' }}>Nothing due in the next {pe.days} days.</div>}
-              {pe.rows.map((r, i) => (
+              {br.rows.length === 0 && <div style={{ padding: '12px', fontSize: 13, color: 'var(--text-3)' }}>No bills or debts yet.</div>}
+              {br.rows.map((r, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--line-2)', fontSize: 13 }}>
                   <Icon name={r.kind === 'debt' ? 'card' : 'cart'} size={15} stroke={r.kind === 'debt' ? 'var(--violet)' : 'var(--blue)'} />
                   <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
-                  <span style={{ color: 'var(--text-3)', fontSize: 11, flex: '0 0 auto' }}>{r.inDays === 0 ? 'today' : r.inDays === 1 ? 'tomorrow' : `in ${r.inDays}d`} · {ordinal(r.payday)}</span>
-                  <span className="num mono" style={{ flex: '0 0 auto' }}>{fmtEur(r.v)}</span>
+                  <span style={{ color: 'var(--text-3)', fontSize: 11, flex: '0 0 auto' }}>{r.inDays === 0 ? 'due today' : r.inDays === 1 ? 'due tmrw' : `in ${r.inDays}d`}</span>
+                  <span className="num mono" style={{ flex: '0 0 auto' }} title={`${fmtEur(r.accrued)} of ${fmtEur(r.amount)}`}>{fmtEur(r.accrued)}</span>
                 </div>
               ))}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontSize: 13.5 }}>
-              <span style={{ color: 'var(--text-2)' }}>Bills due this period</span>
-              <b className="num mono" style={{ color: 'var(--blue)' }}>{fmtEur(pe.expenses)}</b>
+            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 8, lineHeight: 1.45 }}>
+              Each amount is this bill's share so far, not the full bill — so a big cost that's weeks away is built up gradually instead of all at once.
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5, fontSize: 13.5 }}>
-              <span style={{ color: 'var(--text-2)' }}>Debt payments due this period</span>
-              <b className="num mono" style={{ color: 'var(--violet)' }}>{fmtEur(pe.debts)}</b>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--line)', fontSize: 14 }}>
-              <b>Stays on your main account</b>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--line)', fontSize: 14 }}>
+              <b>Keep set aside on your main account</b>
               <b className="num mono">{fmtEur(Math.min(total, essentials))}</b>
             </div>
           </div>
@@ -234,7 +239,7 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
             <div className="num" style={{ fontSize: 46, fontWeight: 600, letterSpacing: '-0.04em', color: 'var(--accent)', marginTop: 8 }}>
               {fmtEur(leftover)}
             </div>
-            <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 4 }}>yours to allocate — this period's bills and debts are covered</div>
+            <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 4 }}>yours to allocate — your bill reserve is topped up</div>
           </div>
           <p style={{ fontSize: 14.5, textAlign: 'center', margin: '4px 0' }}>
             Would you like to set some of this aside — into your pots or saving goals?
@@ -244,7 +249,7 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
               No — keep it private
             </Btn>
             <Btn variant="primary" icon="shield" style={{ flex: 1, justifyContent: 'center', padding: 12 }}
-              disabled={!canSetAside} onClick={() => { suggestPots(); setStep(3); }}>
+              disabled={!canSetAside} onClick={() => { suggestSetAside(); setStep(3); }}>
               Yes, set aside
             </Btn>
           </div>

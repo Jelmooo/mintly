@@ -1,5 +1,5 @@
 import type { AppState } from '../types';
-import { type Budget, CADENCE, fmtEur, ordinal, periodEssentials, periodIncome, type PeriodEssentials } from '../engine';
+import { type BillReserve, billReserve, type Budget, CADENCE, fmtEur, ordinal, periodIncome } from '../engine';
 import { Bar, Card, Icon, Pill, Ring, StatRow } from '../ui';
 
 const TEAL = 'oklch(0.78 0.13 200)';
@@ -14,10 +14,10 @@ function dueLabel(inDays: number, payday: number) {
   return `${when} · the ${ordinal(payday)}`;
 }
 
-function PeriodBar({ pe, goalsShare, leftover }: { pe: PeriodEssentials; goalsShare: number; leftover: number }) {
+function PeriodBar({ expenses, debts, goalsShare, leftover }: { expenses: number; debts: number; goalsShare: number; leftover: number }) {
   const segs = [
-    { key: 'exp', label: 'Bills due', v: pe.expenses, color: 'var(--blue)' },
-    { key: 'debt', label: 'Debt due', v: pe.debts, color: 'var(--violet)' },
+    { key: 'exp', label: 'For bills', v: expenses, color: 'var(--blue)' },
+    { key: 'debt', label: 'For debt', v: debts, color: 'var(--violet)' },
     { key: 'sav', label: 'Toward goals', v: goalsShare, color: TEAL },
     { key: 'left', label: 'Left over', v: Math.max(0, leftover), color: 'var(--accent)' },
   ].filter((s) => s.v > 0);
@@ -48,26 +48,27 @@ function PeriodBar({ pe, goalsShare, leftover }: { pe: PeriodEssentials; goalsSh
   );
 }
 
-function DueThisPeriodCard({ pe }: { pe: PeriodEssentials }) {
+function BillReserveCard({ br }: { br: BillReserve }) {
   return (
     <Card>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 }}>
-        <h3 style={{ fontSize: 16 }}>Due this period</h3>
-        <Pill color="var(--text-2)">next {pe.days} days</Pill>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 8 }}>
+        <h3 style={{ fontSize: 16 }}>Set aside for bills</h3>
+        <Pill color="var(--text-2)">smoothed</Pill>
       </div>
+      <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12 }}>Each bill's share built up so far, toward its due date — never a lump.</div>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {pe.rows.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Nothing due this period. 🎉</div>}
-        {pe.rows.map((r, i) => (
+        {br.rows.length === 0 && <div style={{ color: 'var(--text-3)', fontSize: 13 }}>No bills or debts yet.</div>}
+        {br.rows.map((r, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 2px', borderBottom: '1px solid var(--line-2)', fontSize: 13.5 }}>
             <Icon name={r.kind === 'debt' ? 'card' : 'cart'} size={15} stroke={r.kind === 'debt' ? 'var(--violet)' : 'var(--blue)'} />
             <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
             <span style={{ color: 'var(--text-3)', fontSize: 11, flex: '0 0 auto' }}>{dueLabel(r.inDays, r.payday)}</span>
-            <span className="num mono" style={{ flex: '0 0 auto' }}>{fmtEur(r.v)}</span>
+            <span className="num mono" style={{ flex: '0 0 auto' }} title={`${fmtEur(r.accrued)} of ${fmtEur(r.amount)}`}>{fmtEur(r.accrued)}</span>
           </div>
         ))}
-        {pe.rows.length > 0 && (
+        {br.rows.length > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, fontSize: 14 }}>
-            <b>Total this period</b><b className="num mono">{fmtEur(pe.total)}</b>
+            <b>Keep aside now</b><b className="num mono">{fmtEur(br.total)}</b>
           </div>
         )}
       </div>
@@ -205,9 +206,9 @@ function AddIncomeButton({ onMoneyIn, big }: { onMoneyIn: () => void; big?: bool
 
 /** Path B: manual / variable income — waiting for funding. */
 function ManualOverview({ state, b, onNav, onMoneyIn }: OverviewProps) {
-  const pe = periodEssentials(state);
+  const br = billReserve(state);
   const bal = state.mainBalance;
-  const covered = bal >= pe.total - 0.005;
+  const covered = bal >= br.total - 0.005;
   return (
     <div className="fadeup" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <Card style={{ position: 'relative', overflow: 'hidden', padding: '30px var(--pad)', textAlign: 'center' }}>
@@ -217,21 +218,21 @@ function ManualOverview({ state, b, onNav, onMoneyIn }: OverviewProps) {
           Money arrived?
         </div>
         <p style={{ fontSize: 14, color: 'var(--text-2)', margin: '10px auto 18px', maxWidth: 420, lineHeight: 1.5 }}>
-          Add it and Mintly splits it for you — the bills due this period first, then whatever you choose.
+          Add it and Mintly splits it for you — topping up the reserve for upcoming bills first, then whatever you choose.
         </p>
         <AddIncomeButton onMoneyIn={onMoneyIn} big />
       </Card>
 
       <StatRow items={[
         { label: 'Main account now', value: fmtEur(bal), color: covered ? 'var(--accent)' : 'var(--amber)' },
-        { label: `Due next ${pe.days} days`, value: fmtEur(pe.total), sub: `${fmtEur(pe.expenses)} bills · ${fmtEur(pe.debts)} debt` },
+        { label: 'Bill reserve needed', value: fmtEur(br.total), sub: `${fmtEur(br.expenses)} bills · ${fmtEur(br.debts)} debt` },
         covered
-          ? { label: 'Coverage', value: '✓ covered', color: 'var(--accent)', sub: fmtEur(r2(bal - pe.total)) + ' above bills' }
-          : { label: 'Coverage', value: fmtEur(r2(pe.total - bal)), color: 'var(--amber)', sub: 'still needed for bills' },
+          ? { label: 'Coverage', value: '✓ covered', color: 'var(--accent)', sub: fmtEur(r2(bal - br.total)) + ' above reserve' }
+          : { label: 'Coverage', value: fmtEur(r2(br.total - bal)), color: 'var(--amber)', sub: 'still needed for bills' },
       ]} />
 
       <div className="grid2 ov">
-        <DueThisPeriodCard pe={pe} />
+        <BillReserveCard br={br} />
         <SavingsPlanCard b={b} onNav={onNav} />
       </div>
 
@@ -251,10 +252,13 @@ export function Overview(props: OverviewProps) {
   if (state.salary.cadence === 'manual') return <ManualOverview {...props} />;
 
   const per = CADENCE[state.salary.cadence].perMonth;
-  const pe = periodEssentials(state);
+  const br = billReserve(state);
   const perIncome = r2(periodIncome(state));
+  const billsPerPeriod = r2((b.expensesTotal + b.debtTotal) / per);
+  const expPerPeriod = r2(b.expensesTotal / per);
+  const debtPerPeriod = r2(b.debtTotal / per);
   const goalsShare = r2(b.datedFunded / per);
-  const leftoverPeriod = r2(perIncome - pe.total - goalsShare);
+  const leftoverPeriod = r2(perIncome - billsPerPeriod - goalsShare);
   const heavy = leftoverPeriod < 0;
 
   return (
@@ -272,8 +276,8 @@ export function Overview(props: OverviewProps) {
             </div>
             <div style={{ fontSize: 14, color: 'var(--text-2)', marginTop: 12, maxWidth: 460, lineHeight: 1.5 }}>
               {heavy
-                ? <>The bills due in the next {pe.days} days ({fmtEur(pe.total)}) are more than one {CADENCE[state.salary.cadence].label.toLowerCase()} pay — cover the gap from your buffer.</>
-                : <><b style={{ color: 'var(--text)' }}>{fmtEur(perIncome)}</b> comes in, <b style={{ color: 'var(--text)' }}>{fmtEur(pe.total)}</b> goes to the bills due in the next {pe.days} days{goalsShare > 0 && <> and <b style={{ color: 'var(--text)' }}>{fmtEur(goalsShare)}</b> toward dated goals</>}. Allocate the rest when it lands.</>}
+                ? <>Your bills average <b style={{ color: 'var(--text)' }}>{fmtEur(billsPerPeriod)}</b> per {CADENCE[state.salary.cadence].short}, more than one pay of {fmtEur(perIncome)} — cover the gap from your buffer.</>
+                : <><b style={{ color: 'var(--text)' }}>{fmtEur(perIncome)}</b> comes in, <b style={{ color: 'var(--text)' }}>{fmtEur(billsPerPeriod)}</b> is set aside for bills{goalsShare > 0 && <> and <b style={{ color: 'var(--text)' }}>{fmtEur(goalsShare)}</b> toward dated goals</>} — spread evenly, not lumped. Allocate the rest when it lands.</>}
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -283,7 +287,7 @@ export function Overview(props: OverviewProps) {
           </div>
         </div>
         <div style={{ marginTop: 24 }}>
-          <PeriodBar pe={pe} goalsShare={goalsShare} leftover={leftoverPeriod} />
+          <PeriodBar expenses={expPerPeriod} debts={debtPerPeriod} goalsShare={goalsShare} leftover={leftoverPeriod} />
         </div>
       </Card>
 
@@ -299,7 +303,7 @@ export function Overview(props: OverviewProps) {
       )}
 
       <div className="grid2 ov">
-        <DueThisPeriodCard pe={pe} />
+        <BillReserveCard br={br} />
         <MonthlyPlanCard b={b} />
       </div>
 

@@ -47,13 +47,20 @@ from onboarding (income, expenses, debts, goals), the **Settings** screen
 confirmation, since finishing replaces your data), and **Sign out** (also
 confirmed, shown when signed in).
 
-## Period-based engine
+## Smoothed reserves (no lump-sum surprises)
 
-All allocation math is **per pay period, never grand totals**. The period
-window follows the cadence (weekly = 7 days, 4-weekly = 28, monthly/manual =
-until the same day next month), and only the bills/debt payments whose paydate
-falls inside the window count. Example: €600 comes in and €400 of bills fall
-due this period → €200 is left over, regardless of the monthly totals.
+Every obligation **accrues smoothly toward its due date** instead of landing as
+a lump. For a bill of €A due in `d` days (recurring monthly), the amount you
+should already have set aside now is `A × (monthDays − d) / monthDays`
+(`billReserve` in `engine.ts`). So a €500 bill due in 3 weeks builds up ~€155 →
+€270 → €385 → €500 across the weeks, then resets once it's paid — you're never
+asked to cover the whole thing in one pay period.
+
+This applies to **all sections**: expenses and debts accrue by due date; dated
+goals contribute `required / periodsPerMonth` each payday; pots contribute
+`monthly / periodsPerMonth`. The Add-income flow pre-fills all of these
+smoothed amounts, and the dashboard's "Set aside for bills" card + hero show the
+smoothed per-period picture.
 
 - **Path A — scheduled:** the dashboard computes this automatically per payday.
 - **Path B — manual:** the dashboard waits for funding with a prominent
