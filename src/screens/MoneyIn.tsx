@@ -40,9 +40,11 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
   const essentials = r2(pe.total);
   const prefill = useMemo(() => prefillIncome(state), [state]);
 
+  const expectedIncome = prefill.value === '' ? 0 : Number(prefill.value);
   const [step, setStep] = useState(0);
   const [label, setLabel] = useState(scheduled ? 'Salary' : 'Income');
-  const [mainBal, setMainBal] = useState<number | ''>(state.mainBalance);
+  // Current balance = what the bank shows now, i.e. old balance + this income.
+  const [mainBal, setMainBal] = useState<number | ''>(r2((state.mainBalance || 0) + expectedIncome) || '');
   const [amount, setAmount] = useState<number | ''>(prefill.value);
   /** Corrected goal baselines (integrity check) — goal id → amount. */
   const [baseline, setBaseline] = useState<Record<string, number | ''>>({});
@@ -52,7 +54,8 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
     keepOnMain: number; toSavings: { name: string; v: number }[]; priv: number; covered: boolean;
   }>(null);
 
-  const total = r2((Number(mainBal) || 0) + (Number(amount) || 0));
+  // The current balance already includes this income — it IS the total to split.
+  const total = r2(Number(mainBal) || 0);
   const covered = total >= essentials - 0.005;
   const leftover = r2(Math.max(0, total - essentials));
   const openGoals = [...state.goals]
@@ -103,20 +106,20 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <p style={{ fontSize: 14, color: 'var(--text-2)', marginTop: 0, lineHeight: 1.5 }}>
             {scheduled
-              ? 'Got paid? Let’s check your balance and split this payday. 🎉'
+              ? 'Got paid? Check your current balance and split this payday. 🎉'
               : 'New money in — let’s make sure the bills are covered first, then split the rest. 🎉'}
           </p>
-          <Field label="What is the current balance of your main account?" hint="As it is right now, before this income lands.">
+          <Field label="Current balance of your main account" hint="As your bank shows it right now — this income is already in it.">
             <MoneyInput value={mainBal} onChange={setMainBal} />
           </Field>
-          <Field label="New income amount" hint={prefill.hint}>
+          <Field label="How much came in this time?" hint={prefill.hint ?? 'Just for your history — the split uses your current balance above.'}>
             <MoneyInput value={amount} onChange={setAmount} />
           </Field>
           <Field label="Label (optional)">
             <TextInput value={label} onChange={setLabel} placeholder="e.g. salary, invoice, gift" />
           </Field>
           <Btn variant="primary" style={{ justifyContent: 'center', padding: 13 }}
-            disabled={(Number(amount) || 0) <= 0} onClick={() => setStep(1)}>
+            disabled={total <= 0} onClick={() => setStep(1)}>
             Continue →
           </Btn>
         </div>
@@ -132,8 +135,8 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
             <Icon name={covered ? 'check' : 'flag'} size={19} stroke={covered ? 'var(--accent)' : 'var(--amber)'} />
             <div style={{ fontSize: 13.5, lineHeight: 1.45 }}>
               {covered
-                ? <>Balance + income (<b className="num mono">{fmtEur(total)}</b>) covers <b>100%</b> of the bills and debt payments due this period (next {pe.days} days).</>
-                : <>Balance + income (<b className="num mono">{fmtEur(total)}</b>) is <b className="num mono">{fmtEur(essentials - total)}</b> short of this period's bills — everything stays on your main account this time.</>}
+                ? <>Your balance (<b className="num mono">{fmtEur(total)}</b>) covers <b>100%</b> of the bills and debt payments due this period (next {pe.days} days).</>
+                : <>Your balance (<b className="num mono">{fmtEur(total)}</b>) is <b className="num mono">{fmtEur(essentials - total)}</b> short of this period's bills — everything stays on your main account this time.</>}
             </div>
           </div>
 

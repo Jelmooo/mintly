@@ -54,8 +54,9 @@ due this period → €200 is left over, regardless of the monthly totals.
   **Add income** button.
 
 **Add income** (both paths) runs the prioritized allocation engine:
-1. *"What is the current balance of your main account?"* + the new income
-   amount (prefilled per the tracking mode, see below).
+1. Your **current main-account balance** (as the bank shows it now, this income
+   already included — that balance *is* the amount to split) + how much came in
+   this time (recorded for history/estimates; prefilled per the tracking mode).
 2. **Cover this period's essentials** — checks balance + income against 100%
    of the bills & debts due in the window and shows what stays on the main
    account. If short, everything stays put.
