@@ -52,7 +52,10 @@ export function Debt({ state, b, update }: { state: AppState; b: Budget; update:
                     <div style={{ display: 'flex', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
                       {d.payday ? <Pill color="var(--text-2)">due {ordinal(d.payday)}</Pill> : null}
                       {d.apr ? <Pill color="var(--amber)">{d.apr}% APR</Pill> : null}
-                      {payoff ? <Pill color="var(--text-2)"><Icon name="cal" size={11} /> clear {fmtMonth(payoff)}</Pill>
+                      {payoff ? <>
+                        <Pill color="var(--text-2)"><Icon name="card" size={11} /> {months} payment{months === 1 ? '' : 's'} left</Pill>
+                        <Pill color="var(--text-2)"><Icon name="cal" size={11} /> clear {fmtMonth(payoff)}</Pill>
+                      </>
                         : remaining <= 0 ? <Pill color="var(--accent)"><Icon name="check" size={11} /> paid off</Pill> : null}
                     </div>
                   </div>
