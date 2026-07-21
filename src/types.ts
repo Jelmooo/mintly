@@ -28,11 +28,16 @@ export interface IncomeExtra {
   freq: ExtraFreq;
 }
 
+export type ExpenseFreq = 'monthly' | 'quarterly' | 'yearly';
+
 export interface Expense {
   id: string;
   name: string;
   category: string;
+  /** The charged amount at the given frequency (e.g. €70 per quarter). */
   amount: number | '';
+  /** How often it's charged. Missing = monthly. */
+  freq?: ExpenseFreq;
   /** Day of month 1..31. */
   payday: number;
 }
@@ -47,9 +52,10 @@ export interface AppSettings {
 export interface Debt {
   id: string;
   name: string;
-  /** Original balance, for paid-down %. */
-  start: number;
-  balance: number | '';
+  /** Original total amount owed. */
+  total: number | '';
+  /** Amount paid off so far. Remaining = total − paid (auto-calculated). */
+  paid: number | '';
   monthly: number | '';
   apr?: number | '';
   /** Day of month the payment is due (1..31). */

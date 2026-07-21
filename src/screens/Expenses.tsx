@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AppState, CustomCat, Expense } from '../types';
-import { type Budget, CAT_COLORS, CAT_ICONS, fmtEur, ordinal, uid } from '../engine';
+import { type Budget, CAT_COLORS, CAT_ICONS, EXPENSE_FREQ, expenseMonthly, fmtEur, ordinal, uid } from '../engine';
+import type { ExpenseFreq } from '../types';
 import { Btn, Card, Empty, Field, Icon, IconBtn, CatDot, MoneyInput, PageHead, Segmented, Select, Sheet, StatRow, TextInput } from '../ui';
 
 type Upd = (u: Partial<AppState> | ((s: AppState) => AppState)) => void;
@@ -28,7 +29,7 @@ export function Expenses({ state, b, update }: { state: AppState; b: Budget; upd
   return (
     <div className="fadeup" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <PageHead title="Expenses" sub="Recurring costs paid from your main account."
-        action={<Btn variant="primary" icon="plus" onClick={() => setEdit({ id: '', name: '', category: 'housing', amount: '', payday: 1 })}>Add</Btn>} />
+        action={<Btn variant="primary" icon="plus" onClick={() => setEdit({ id: '', name: '', category: 'housing', amount: '', freq: 'monthly', payday: 1 })}>Add</Btn>} />
 
       <StatRow items={[
         { label: 'Monthly total', value: fmtEur(b.expensesTotal), color: 'var(--blue)' },
@@ -52,9 +53,14 @@ export function Expenses({ state, b, update }: { state: AppState; b: Budget; upd
                 <CatDot category={e.category} cats={cats} size={36} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.name}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label} · {ordinal(e.payday)}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {cat.label} · {ordinal(e.payday)}{e.freq && e.freq !== 'monthly' ? ` · ${EXPENSE_FREQ[e.freq].label.toLowerCase()}` : ''}
+                  </div>
                 </div>
-                <div className="num mono" style={{ fontSize: 15, textAlign: 'right', flex: '0 0 auto' }}>{fmtEur(Number(e.amount) || 0)}</div>
+                <div style={{ textAlign: 'right', flex: '0 0 auto' }}>
+                  <div className="num mono" style={{ fontSize: 15 }}>{fmtEur(Number(e.amount) || 0)}{e.freq && e.freq !== 'monthly' ? <span style={{ color: 'var(--text-3)', fontSize: 11 }}>/{EXPENSE_FREQ[e.freq].short}</span> : ''}</div>
+                  {e.freq && e.freq !== 'monthly' && <div className="num mono" style={{ fontSize: 10.5, color: 'var(--text-3)' }}>≈ {fmtEur(expenseMonthly(e))}/mo</div>}
+                </div>
                 <div style={{ display: 'flex', gap: 4, flex: '0 0 auto' }}>
                   <IconBtn name="card" onClick={() => setEdit(e)} title="Edit" />
                   <IconBtn name="trash" onClick={() => del(e.id)} title="Delete" danger />
@@ -191,8 +197,16 @@ function ExpenseSheet({ item, cats, onAddCat, onClose, onSave }: {
         </div>
       )}
 
+      <Field label="Billed">
+        <Segmented value={d.freq ?? 'monthly'}
+          options={[{ value: 'monthly', label: 'Monthly' }, { value: 'quarterly', label: 'Quarterly' }, { value: 'yearly', label: 'Yearly' }]}
+          onChange={(v) => set('freq', v as ExpenseFreq)} />
+      </Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        <Field label="Amount / month"><MoneyInput value={d.amount} onChange={(v) => set('amount', v)} /></Field>
+        <Field label={`Amount / ${EXPENSE_FREQ[d.freq ?? 'monthly'].label.toLowerCase().replace('ly', '')}`}
+          hint={d.freq && d.freq !== 'monthly' && d.amount ? `≈ ${fmtEur(expenseMonthly(d))} / month` : undefined}>
+          <MoneyInput value={d.amount} onChange={(v) => set('amount', v)} />
+        </Field>
         <Field label="Payday" hint="Day it's due">
           <Select value={String(d.payday)} onChange={(v) => set('payday', Number(v))}
             options={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: ordinal(i + 1) }))} />

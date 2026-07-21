@@ -1,6 +1,6 @@
 // engine.ts — categories, formatting, and the allocation engine (ported
 // logic-for-logic from the Allot design handoff, computeBudget).
-import type { AppState, Cadence, Goal, IncomeExtra, Salary } from './types';
+import type { AppState, Cadence, Debt, Expense, ExpenseFreq, Goal, IncomeExtra, Salary } from './types';
 
 export interface CatDef { label: string; color: string; icon: string; hue?: number }
 
@@ -83,6 +83,22 @@ export function extraMonthly(x: IncomeExtra) {
   return x.freq === 'yearly' ? a / 12 : a;
 }
 
+export const EXPENSE_FREQ: Record<ExpenseFreq, { label: string; short: string; per: number }> = {
+  monthly:   { label: 'Monthly',   short: 'mo', per: 1 },
+  quarterly: { label: 'Quarterly', short: 'q',  per: 3 },
+  yearly:    { label: 'Yearly',    short: 'yr', per: 12 },
+};
+
+/** Monthly-equivalent of an expense (a €70/quarter bill counts as €23.33/mo). */
+export function expenseMonthly(e: Expense): number {
+  return n(e.amount) / EXPENSE_FREQ[e.freq ?? 'monthly'].per;
+}
+
+/** Remaining balance of a debt = total − paid. */
+export function debtRemaining(d: Debt): number {
+  return Math.max(0, n(d.total) - n(d.paid));
+}
+
 export interface FundedGoal extends Goal {
   remaining: number;
   hasDeadline: boolean;
@@ -124,9 +140,9 @@ export function computeBudget(state: AppState): Budget {
   const extrasM = extras.reduce((s, x) => s + x.monthly, 0);
   const incomeTotal = salM + extrasM;
 
-  const expensesTotal = state.expenses.reduce((s, e) => s + n(e.amount), 0);
+  const expensesTotal = state.expenses.reduce((s, e) => s + expenseMonthly(e), 0);
   const expByCat: Record<string, number> = {};
-  state.expenses.forEach((e) => { expByCat[e.category] = (expByCat[e.category] || 0) + n(e.amount); });
+  state.expenses.forEach((e) => { expByCat[e.category] = (expByCat[e.category] || 0) + expenseMonthly(e); });
 
   const debtTotal = state.debts.reduce((s, d) => s + n(d.monthly), 0);
 
@@ -205,6 +221,8 @@ export interface PeriodBill {
   v: number;
   kind: 'expense' | 'debt';
   inDays: number;
+  /** Set on non-monthly expenses so the UI can flag them (e.g. "quarterly"). */
+  freq?: ExpenseFreq;
 }
 export interface PeriodEssentials {
   days: number;
@@ -219,14 +237,14 @@ export function periodEssentials(state: AppState, from: Date = new Date()): Peri
   const days = periodWindowDays(state.salary.cadence, from);
   const rows: PeriodBill[] = [];
   for (const e of state.expenses) {
-    const v = n(e.amount);
+    const v = expenseMonthly(e); // quarterly/yearly spread to a monthly reserve
     if (v <= 0) continue;
     const inDays = nextDueInDays(e.payday ?? 1, from);
-    if (inDays < days) rows.push({ name: e.name, payday: e.payday ?? 1, v, kind: 'expense', inDays });
+    if (inDays < days) rows.push({ name: e.name, payday: e.payday ?? 1, v, kind: 'expense', inDays, freq: e.freq ?? 'monthly' });
   }
   for (const d of state.debts) {
     const v = n(d.monthly);
-    if (v <= 0 || n(d.balance) <= 0) continue;
+    if (v <= 0 || debtRemaining(d) <= 0) continue;
     const inDays = nextDueInDays(d.payday ?? 1, from);
     if (inDays < days) rows.push({ name: d.name, payday: d.payday ?? 1, v, kind: 'debt', inDays });
   }

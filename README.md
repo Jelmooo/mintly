@@ -27,8 +27,11 @@ Open http://localhost:5173. State persists to `localStorage`
   period** (with days-until), the monthly plan, savings plan (progress rings)
   and a spend donut. Plus the **Add income** button.
 - **Income** — salary cadence (weekly / 4-weekly / monthly / manual) + extras.
-- **Expenses** — fixed costs by category, paydate, and a payment calendar.
-- **Debt** — paid-down progress, paydate + projected clear date.
+- **Expenses** — fixed costs by category, paydate, and **frequency**
+  (monthly / quarterly / yearly). Non-monthly bills are spread to a monthly
+  equivalent (a €70/quarter bill counts as €23,33/mo) everywhere in the engine.
+- **Debt** — enter the **total** and **amount paid**; the remaining balance is
+  auto-calculated. Paid-down progress, paydate + projected clear date.
 - **Goals** — priority reorder, optional deadlines; dated goals get a planned
   monthly amount, open-ended goals are funded from leftover.
 

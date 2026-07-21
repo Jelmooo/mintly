@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import type { AppState, Debt, Expense, Goal, IncomeExtra } from '../types';
-import { CADENCE, CATEGORIES, computeBudget, fmtEur, fmtMonth, INCOME_KINDS, NOW, ordinal, salaryMonthly, uid } from '../engine';
+import type { AppState, Debt, Expense, ExpenseFreq, Goal, IncomeExtra } from '../types';
+import { CADENCE, CATEGORIES, computeBudget, EXPENSE_FREQ, fmtEur, fmtMonth, INCOME_KINDS, NOW, ordinal, salaryMonthly, uid } from '../engine';
 import { Btn, CatDot, DateInput, Icon, MoneyInput, Segmented, Select, TextInput } from '../ui';
 import logoUrl from '../assets/Logo.svg';
 
@@ -31,8 +31,8 @@ export function Onboarding({ onFinish, onSkip }: {
   const [draft, setDraft] = useState<AppState>(() => JSON.parse(JSON.stringify(EMPTY)));
   const meta = STEPS[step];
 
-  const [exp, setExp] = useState({ name: '', category: 'housing', amount: '' as number | '', payday: 1 });
-  const [debt, setDebt] = useState({ name: '', balance: '' as number | '', monthly: '' as number | '', payday: 1 });
+  const [exp, setExp] = useState({ name: '', category: 'housing', amount: '' as number | '', freq: 'monthly' as ExpenseFreq, payday: 1 });
+  const [debt, setDebt] = useState({ name: '', total: '' as number | '', paid: 0 as number | '', monthly: '' as number | '', payday: 1 });
   const [goal, setGoal] = useState({ name: '', target: '' as number | '', saved: 0 as number | '', deadline: '' });
   const [extra, setExtra] = useState({ kind: 'travel', name: '', amount: '' as number | '', freq: 'monthly' as 'monthly' | 'yearly' });
 
@@ -145,14 +145,15 @@ export function Onboarding({ onFinish, onSkip }: {
             {meta.key === 'expenses' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {draft.expenses.map((e) => (
-                  <Row key={e.id} catKey={e.category} title={e.name} meta={`${(CATEGORIES[e.category] || CATEGORIES.other).label} · due the ${ordinal(e.payday)}`} amount={fmtEur(Number(e.amount) || 0)} onRemove={() => removeFrom('expenses', e.id)} />
+                  <Row key={e.id} catKey={e.category} title={e.name} meta={`${(CATEGORIES[e.category] || CATEGORIES.other).label} · due the ${ordinal(e.payday)}${e.freq && e.freq !== 'monthly' ? ' · ' + EXPENSE_FREQ[e.freq].label.toLowerCase() : ''}`} amount={fmtEur(Number(e.amount) || 0)} onRemove={() => removeFrom('expenses', e.id)} />
                 ))}
-                <QuickAdd canAdd={!!exp.name && !!exp.amount} onAdd={() => { if (!exp.name || !exp.amount) return; pushTo('expenses', { ...exp, id: uid('e') } as Expense); setExp({ name: '', category: 'housing', amount: '', payday: 1 }); }}>
+                <QuickAdd canAdd={!!exp.name && !!exp.amount} onAdd={() => { if (!exp.name || !exp.amount) return; pushTo('expenses', { ...exp, id: uid('e') } as Expense); setExp({ name: '', category: 'housing', amount: '', freq: 'monthly', payday: 1 }); }}>
                   <TextInput value={exp.name} onChange={(v) => setExp({ ...exp, name: v })} placeholder="e.g. Apartment rent" />
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <Select value={exp.category} onChange={(v) => setExp({ ...exp, category: v })} options={Object.entries(CATEGORIES).map(([value, c]) => ({ value, label: c.label }))} />
                     <MoneyInput value={exp.amount} onChange={(v) => setExp({ ...exp, amount: v })} />
                   </div>
+                  <Segmented value={exp.freq} options={[{ value: 'monthly', label: 'Monthly' }, { value: 'quarterly', label: 'Quarterly' }, { value: 'yearly', label: 'Yearly' }]} onChange={(v) => setExp({ ...exp, freq: v as ExpenseFreq })} />
                   <Select value={String(exp.payday)} onChange={(v) => setExp({ ...exp, payday: Number(v) })} options={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: 'Due the ' + ordinal(i + 1) }))} />
                 </QuickAdd>
               </div>
@@ -161,16 +162,21 @@ export function Onboarding({ onFinish, onSkip }: {
             {meta.key === 'debts' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {draft.debts.map((d2) => (
-                  <Row key={d2.id} icon="card" color="var(--violet)" title={d2.name} meta={`${fmtEur(Number(d2.monthly) || 0)}/mo${d2.payday ? ' · due the ' + ordinal(d2.payday) : ''}`} amount={fmtEur(Number(d2.balance) || 0)} onRemove={() => removeFrom('debts', d2.id)} />
+                  <Row key={d2.id} icon="card" color="var(--violet)" title={d2.name} meta={`${fmtEur(Number(d2.monthly) || 0)}/mo${d2.payday ? ' · due the ' + ordinal(d2.payday) : ''}`} amount={fmtEur(Math.max(0, (Number(d2.total) || 0) - (Number(d2.paid) || 0)))} onRemove={() => removeFrom('debts', d2.id)} />
                 ))}
-                <QuickAdd canAdd={!!debt.name && debt.balance !== ''} onAdd={() => { if (!debt.name || debt.balance === '') return; pushTo('debts', { ...debt, id: uid('d'), start: Number(debt.balance) || 0, apr: '' } as Debt); setDebt({ name: '', balance: '', monthly: '', payday: 1 }); }}>
+                <QuickAdd canAdd={!!debt.name && debt.total !== ''} onAdd={() => { if (!debt.name || debt.total === '') return; pushTo('debts', { ...debt, id: uid('d'), apr: '' } as Debt); setDebt({ name: '', total: '', paid: 0, monthly: '', payday: 1 }); }}>
                   <TextInput value={debt.name} onChange={(v) => setDebt({ ...debt, name: v })} placeholder="e.g. Credit card" />
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <div><div className="eyebrow" style={{ marginBottom: 6 }}>Balance</div><MoneyInput value={debt.balance} onChange={(v) => setDebt({ ...debt, balance: v })} /></div>
-                    <div><div className="eyebrow" style={{ marginBottom: 6 }}>Monthly payment</div><MoneyInput value={debt.monthly} onChange={(v) => setDebt({ ...debt, monthly: v })} /></div>
+                    <div><div className="eyebrow" style={{ marginBottom: 6 }}>Total owed</div><MoneyInput value={debt.total} onChange={(v) => setDebt({ ...debt, total: v })} /></div>
+                    <div><div className="eyebrow" style={{ marginBottom: 6 }}>Paid off</div><MoneyInput value={debt.paid} onChange={(v) => setDebt({ ...debt, paid: v })} /></div>
                   </div>
-                  <Select value={String(debt.payday)} onChange={(v) => setDebt({ ...debt, payday: Number(v) })}
-                    options={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: 'Due the ' + ordinal(i + 1) }))} />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div><div className="eyebrow" style={{ marginBottom: 6 }}>Monthly payment</div><MoneyInput value={debt.monthly} onChange={(v) => setDebt({ ...debt, monthly: v })} /></div>
+                    <div><div className="eyebrow" style={{ marginBottom: 6 }}>Paydate</div>
+                      <Select value={String(debt.payday)} onChange={(v) => setDebt({ ...debt, payday: Number(v) })}
+                        options={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: ordinal(i + 1) }))} />
+                    </div>
+                  </div>
                 </QuickAdd>
               </div>
             )}
