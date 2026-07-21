@@ -1,12 +1,18 @@
 import { useMemo, useState } from 'react';
 import type { AppState, MoneyEvent } from '../types';
 import { fmtEur, ordinal, periodEssentials, uid } from '../engine';
-import { Btn, Field, Icon, MoneyInput, Sheet, TextInput } from '../ui';
+import { Btn, DateInput, Field, Icon, MoneyInput, Sheet, TextInput } from '../ui';
 
 type Upd = (u: Partial<AppState> | ((s: AppState) => AppState)) => void;
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const TEAL = 'var(--teal)';
+
+/** Today's date as a local yyyy-mm-dd string. */
+function todayISO(): string {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
 
 /** Income prefill according to the payment-tracking setting. */
 function prefillIncome(state: AppState): { value: number | ''; hint?: string } {
@@ -35,14 +41,17 @@ function prefillIncome(state: AppState): { value: number | ''; hint?: string } {
  *  4. summary + apply
  */
 export function MoneyIn({ state, update, onClose }: { state: AppState; update: Upd; onClose: () => void }) {
-  const pe = useMemo(() => periodEssentials(state), [state]);
   const scheduled = state.salary.cadence !== 'manual';
-  const essentials = r2(pe.total);
   const prefill = useMemo(() => prefillIncome(state), [state]);
 
   const expectedIncome = prefill.value === '' ? 0 : Number(prefill.value);
   const [step, setStep] = useState(0);
   const [label, setLabel] = useState(scheduled ? 'Salary' : 'Income');
+  // Payslip date — defaults to today, editable if you enter it a few days late.
+  const [payDate, setPayDate] = useState(todayISO());
+  // Bills "due this period" are measured from the payslip date, not from today.
+  const pe = useMemo(() => periodEssentials(state, new Date(payDate + 'T12:00:00')), [state, payDate]);
+  const essentials = r2(pe.total);
   // Current balance = what the bank shows now, i.e. old balance + this income.
   const [mainBal, setMainBal] = useState<number | ''>(r2((state.mainBalance || 0) + expectedIncome) || '');
   const [amount, setAmount] = useState<number | ''>(prefill.value);
@@ -84,7 +93,7 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
     const priv = covered ? r2(leftover - toSavingsSum) : 0;
 
     const event: MoneyEvent = {
-      id: uid('ev'), date: new Date().toISOString(), kind: 'income', label,
+      id: uid('ev'), date: new Date(payDate + 'T12:00:00').toISOString(), kind: 'income', label,
       amount: Number(amount) || 0,
       lines: [
         { key: 'essentials', name: 'Kept for bills & debts', amount: keepOnMain },
@@ -114,6 +123,9 @@ export function MoneyIn({ state, update, onClose }: { state: AppState; update: U
           </Field>
           <Field label="How much came in this time?" hint={prefill.hint ?? 'Just for your history — the split uses your current balance above.'}>
             <MoneyInput value={amount} onChange={setAmount} />
+          </Field>
+          <Field label="Payslip date" hint={payDate !== todayISO() ? 'Bills due are counted from this date.' : "Defaults to today — change it if you're entering this a few days late."}>
+            <DateInput value={payDate} onChange={(v) => setPayDate(v || todayISO())} style={{ maxWidth: 200 }} />
           </Field>
           <Field label="Label (optional)">
             <TextInput value={label} onChange={setLabel} placeholder="e.g. salary, invoice, gift" />
