@@ -168,6 +168,33 @@
         min-height: 100vh; display: flex; flex-direction: column; align-items: center;
         justify-content: center; gap: 22px; text-align: center; padding: 32px 22px;
       }
+
+      /* ---------- profile / account menu ---------- */
+      .menu-backdrop { position: fixed; inset: 0; z-index: 150; }
+      .profile-menu {
+        position: fixed; z-index: 151;
+        top: 60px; right: clamp(10px, 3vw, 26px);
+        width: min(290px, calc(100vw - 20px));
+        max-height: calc(100vh - 76px); overflow-y: auto;
+        background: var(--surface); border: 1px solid var(--line);
+        border-radius: 16px; box-shadow: 0 22px 55px -14px oklch(0 0 0 / 0.75);
+        padding: 8px; animation: pop 0.16s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      }
+      .menu-id { display: flex; align-items: center; gap: 11px; padding: 10px 10px 12px; }
+      .menu-label {
+        font-family: "IBM Plex Mono", monospace; font-size: 9.5px; font-weight: 500;
+        letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3);
+        padding: 8px 12px 4px;
+      }
+      .menu-item {
+        display: flex; align-items: center; gap: 12px; width: 100%;
+        padding: 11px 12px; border-radius: 10px; background: none; border: none;
+        color: var(--text); font-size: 14px; text-align: left; line-height: 1;
+      }
+      .menu-item:hover { background: var(--surface-2); }
+      .menu-item.danger { color: var(--rose); }
+      .menu-item.danger svg { transform: rotate(180deg); }
+      .menu-divider { height: 1px; background: var(--line); margin: 6px 6px; }
     </style>
   </head>
   <body>

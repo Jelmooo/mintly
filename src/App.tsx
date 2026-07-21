@@ -11,6 +11,7 @@ import { Settings } from './screens/Settings';
 import { Onboarding } from './screens/Onboarding';
 import { MoneyIn } from './screens/MoneyIn';
 import { Login } from './screens/Login';
+import { ProfileMenu } from './screens/ProfileMenu';
 import iconUrl from './assets/Icon.svg';
 
 const NAV = [
@@ -19,7 +20,6 @@ const NAV = [
   { id: 'expenses', label: 'Expenses', icon: 'cart' },
   { id: 'debt', label: 'Debt', icon: 'card' },
   { id: 'goals', label: 'Goals', icon: 'target' },
-  { id: 'settings', label: 'Settings', icon: 'gear' },
 ];
 
 function Splash({ label }: { label: string }) {
@@ -32,9 +32,10 @@ function Splash({ label }: { label: string }) {
 }
 
 function Shell() {
-  const { state, update, reset, cloud, user, authLoading, syncing, onboarded, setOnboarded, signOutUser } = useStore();
+  const { state, update, reset, cloud, user, authLoading, syncing, onboarded, setOnboarded } = useStore();
   const [tab, setTab] = useState(() => location.hash.replace('#', '') || 'overview');
   const [money, setMoney] = useState(false);
+  const [menu, setMenu] = useState(false);
 
   useEffect(() => {
     function onHash() { const h = location.hash.replace('#', ''); if (h) setTab(h); }
@@ -60,7 +61,7 @@ function Shell() {
     expenses: <Expenses state={state} b={b} update={update} />,
     debt: <Debt state={state} b={b} update={update} />,
     goals: <Goals state={state} b={b} update={update} />,
-    settings: <Settings />,
+    settings: <Settings onNav={go} />,
   };
 
   return (
@@ -76,22 +77,21 @@ function Shell() {
         <div className="head-right">
           {!cloud && <Pill color="var(--amber)" style={{ flexShrink: 0 }}>no sync</Pill>}
           <Pill color="var(--text-2)" style={{ flexShrink: 0 }}>{CADENCE[state.salary.cadence].label}</Pill>
-          <button onClick={() => setOnboarded(false)} title="Re-run setup" className="head-btn">
-            <Icon name="flag" size={16} />
+          <button
+            className="head-btn"
+            aria-haspopup="menu"
+            aria-expanded={menu}
+            title="Account & settings"
+            onClick={() => setMenu((v) => !v)}
+          >
+            {cloud && user?.photoURL
+              ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" style={{ width: 24, height: 24, borderRadius: '50%' }} />
+              : <Icon name="user" size={16} />}
           </button>
-          {cloud && user && (
-            <button
-              className="head-btn"
-              title={`Signed in as ${user.displayName ?? user.email ?? ''} — click to sign out`}
-              onClick={() => { if (confirm('Sign out of Mintly?')) void signOutUser(); }}
-            >
-              {user.photoURL
-                ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" style={{ width: 22, height: 22, borderRadius: '50%' }} />
-                : <Icon name="user" size={16} />}
-            </button>
-          )}
         </div>
       </header>
+
+      {menu && <ProfileMenu onClose={() => setMenu(false)} onNav={go} />}
 
       <nav className="tabs">
         {NAV.map((n) => (

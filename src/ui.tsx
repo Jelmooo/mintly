@@ -244,6 +244,37 @@ export function Sheet({ open, onClose, title, children, footer }: {
   );
 }
 
+export function ConfirmDialog({ open, title, message, confirmLabel = 'Confirm', danger, onConfirm, onCancel }: {
+  open: boolean; title: string; message: ReactNode; confirmLabel?: string; danger?: boolean;
+  onConfirm: () => void; onCancel: () => void;
+}) {
+  useEffect(() => {
+    function esc(e: KeyboardEvent) { if (e.key === 'Escape') onCancel(); }
+    if (open) document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [open, onCancel]);
+  if (!open) return null;
+  return (
+    <div onClick={onCancel} style={{
+      position: 'fixed', inset: 0, zIndex: 300, background: 'oklch(0 0 0 / 0.6)',
+      backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: 'min(380px, 100%)', background: 'var(--surface)', border: '1px solid var(--line)',
+        borderRadius: 18, padding: 22, boxShadow: '0 24px 60px -12px oklch(0 0 0 / 0.8)',
+        animation: 'pop .2s cubic-bezier(.2,.8,.2,1) both',
+      }}>
+        <h3 style={{ fontSize: 18, marginBottom: 8 }}>{title}</h3>
+        <div style={{ fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.5 }}>{message}</div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+          <Btn variant="dim" onClick={onCancel}>Cancel</Btn>
+          <Btn variant={danger ? 'danger' : 'primary'} onClick={onConfirm}>{confirmLabel}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
   return (
     <label style={{ display: 'block', marginBottom: 14 }}>

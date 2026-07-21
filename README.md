@@ -21,7 +21,7 @@ npm run dev
 Open http://localhost:5173. State persists to `localStorage`
 (`allot.budget.v2`); onboarding flag is `allot.onboarded.v1`.
 
-## Screens (6 tabs)
+## Screens (5 tabs + account menu)
 
 - **Home** — hero "left over this period", a period bar, the bills **due this
   period** (with days-until), the monthly plan, savings plan (progress rings)
@@ -31,7 +31,12 @@ Open http://localhost:5173. State persists to `localStorage`
 - **Debt** — paid-down progress, paydate + projected clear date.
 - **Goals** — priority reorder, optional deadlines; dated goals get a planned
   monthly amount, open-ended goals are funded from leftover.
-- **Settings** — payment-tracking mode, re-run onboarding, account/sign-out.
+
+The avatar (top right) opens an **account menu**: quick links to edit anything
+from onboarding (income, expenses, debts, goals), the **Settings** screen
+(payment-tracking mode + edit-your-budget hub), **Restart onboarding** (with a
+confirmation, since finishing replaces your data), and **Sign out** (also
+confirmed, shown when signed in).
 
 ## Period-based engine
 
